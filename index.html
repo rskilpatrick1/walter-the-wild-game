@@ -1,0 +1,1987 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Walter the Wild: Run Home</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #2c3b2a; color: #fff;
+    font-family: "Trebuchet MS", system-ui, sans-serif; user-select: none; -webkit-user-select: none; }
+  canvas { display: block; touch-action: none; }
+  .panel { background: rgba(20, 28, 18, .62); border-radius: 14px; padding: 8px 14px; }
+  #hud { position: fixed; top: 12px; left: 12px; font-size: 22px; font-weight: bold; line-height: 1.45; }
+  #trip { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); width: min(420px, 46vw); }
+  #bar { position: relative; height: 12px; background: rgba(255,255,255,.28); border-radius: 6px; margin: 10px 30px 4px 6px; }
+  #fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: #a8e6ff; border-radius: 6px; }
+  #me { position: absolute; top: -13px; font-size: 24px; transform: translateX(-50%); }
+  #homeIcon { position: absolute; right: -32px; top: -14px; font-size: 26px; }
+  #msg { position: fixed; top: 30%; left: 50%; transform: translate(-50%, -50%); font-size: 30px; font-weight: bold;
+    text-align: center; text-shadow: 0 2px 4px #000; opacity: 0; transition: opacity .25s;
+    width: max-content; max-width: calc(100vw - 32px); box-sizing: border-box; pointer-events: none;
+    background: rgba(20, 28, 18, .6); border-radius: 14px; padding: 6px 18px; }
+  #msg.alarm { font-size: 54px; color: #ffe36a; background: rgba(90, 20, 10, .7); }
+  #speech { position: fixed; bottom: 60px; left: 50%; transform: translateX(-50%); max-width: min(620px, calc(100vw - 32px));
+    box-sizing: border-box; background: #fdf6e3; color: #3a2a1a; border-radius: 16px; padding: 10px 16px; font-size: 19px;
+    line-height: 1.35; box-shadow: 0 4px 18px rgba(0,0,0,.35); opacity: 0; transition: opacity .3s; pointer-events: none; }
+  #speech b { color: #b8462a; }
+  #turn { position: fixed; bottom: 30%; left: 50%; transform: translateX(-50%); font-size: 46px; font-weight: bold;
+    color: #c8f3ff; text-shadow: 0 0 14px #3ac0ff, 0 2px 4px #000; display: none; white-space: nowrap; }
+  #help { position: fixed; bottom: 10px; left: 50%; transform: translateX(-50%); font-size: 15px; white-space: nowrap; }
+  #card { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(10, 16, 10, .55); }
+  #card .box { background: #fdf6e3; color: #3a2a1a; border-radius: 20px; padding: 26px 34px; max-width: 520px;
+    width: calc(100vw - 32px); box-sizing: border-box; text-align: center; box-shadow: 0 10px 40px rgba(0,0,0,.4); }
+  #card h1 { margin: 0 0 6px; font-size: 34px; color: #b8462a; }
+  #card p { font-size: 18px; line-height: 1.45; margin: 10px 0; }
+  #card .keys { font-size: 16px; text-align: left; display: inline-block; margin: 6px 0 12px; }
+  #card button { font: inherit; font-size: 22px; font-weight: bold; background: #3a7a3a; color: #fff; border: 0;
+    border-radius: 12px; padding: 10px 28px; cursor: pointer; margin-top: 6px; }
+  #card button:hover { background: #2f662f; }
+  .big { font-size: 26px; font-weight: bold; }
+</style>
+</head>
+<body>
+<div id="hud" class="panel"><span>&#x1F43E; <span id="nTracks">0</span></span><br><span>&#x2B50; <span id="nStars">0</span></span></div>
+<div id="trip" class="panel"><div id="bar"><div id="fill"></div><div id="me">&#x1F9D2;</div><div id="homeIcon">&#x1F3E1;</div></div></div>
+<div id="msg"></div>
+<div id="turn"></div>
+<div id="speech"></div>
+<div id="help" class="panel">&#x2190; &#x2192; move and turn &nbsp;&bull;&nbsp; &#x2191; jump &nbsp;&bull;&nbsp; &#x2193; duck &nbsp;&bull;&nbsp; P pause &nbsp;&bull;&nbsp; M sound &nbsp;&bull;&nbsp; N music</div>
+<div id="card"><div class="box"><h1>Walter the Wild</h1><p>Loading the woods...</p></div></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// =====================================================================
+// WALTER THE WILD: RUN HOME
+// Walter runs through the woods toward home. He follows the glowing bear
+// tracks that Major's stardust lit up, and collects stars on the way.
+// Friends (and a few not-so-friendly faces) from the book drop in.
+//
+// How it fits together:
+//   1. KNOBS: the numbers that set how hard the game is.
+//   2. THE ROUTE: the whole trail is planned at the start, as a list of
+//      straight pieces ("segments") joined by left or right turns.
+//   3. THE LOOK: sky, light, shadows, textures, and the sculpting helpers
+//      that turn simple shapes into rounded, lumpy, natural ones.
+//   4. THE WORLD: trees, rocks, logs and tracks are built a few segments
+//      ahead of Walter and thrown away behind him.
+//   5. CHARACTERS: Walter, Mom and Dad, Polly, the owl, Major, the coyote,
+//      and the cat. Each is built from body parts on joints.
+//   6. EFFECTS: sparkles and fireflies.
+//   7. SOUND AND MUSIC: all made on the spot by the Web Audio API.
+//   8. CAMEOS: short scenes where a character from the book shows up.
+//   9. CONTROLS, SCREENS, and THE LOOP.
+// =====================================================================
+
+const $ = (id) => document.getElementById(id);
+
+if (!window.THREE) {
+  document.querySelector("#card .box").innerHTML =
+    "<h1>Walter the Wild</h1><p>The game needs an internet connection to load its 3D engine. Connect, then refresh the page.</p>";
+  throw new Error("three.js did not load");
+}
+
+// ---------------------------------------------------------------------
+// 1. KNOBS
+// ---------------------------------------------------------------------
+const LANE_W = 1.7;          // distance between the three lanes
+const TRAIL_HALF = 3.4;      // half the trail's width
+const SPEED_START = 11;      // units per second at the start...
+const SPEED_END = 16.5;      // ...speeding up to this by the end
+const JUMP_V = 7.8;          // how hard Walter jumps
+const GRAVITY = 24;
+const DUCK_TIME = 0.8;       // seconds a duck lasts
+const TURN_ZONE = 18;        // a turn key counts this close to a corner
+const SEGMENTS = 14;         // straight pieces in one run (about 1.5 minutes)
+const DROP_ON_BUMP = 3;      // tracks Walter drops when he stumbles
+const CHASE_BOOST = 1.15;    // Walter runs this much faster while the coyote chases him
+
+// A small random-number generator we can restart, so each run's route is
+// planned from one seed. Math.random() can't be restarted like that.
+let seed = 1;
+function rand() {
+  seed = (seed * 16807) % 2147483647;
+  return (seed - 1) / 2147483646;
+}
+const pick = (list) => list[Math.floor(rand() * list.length)];
+
+// ---------------------------------------------------------------------
+// 2. THE ROUTE
+// Each segment is a straight stretch of trail. Positions on it are given
+// as s (how far along) and lat (sideways: negative is left). Lane -1, 0, 1
+// sits at lat -LANE_W, 0, +LANE_W.
+// ---------------------------------------------------------------------
+const DIRS = [{ x: 0, z: -1 }, { x: 1, z: 0 }, { x: 0, z: 1 }, { x: -1, z: 0 }]; // north, east, south, west
+
+let route = [];
+let TOTAL = 0;               // total length of the route
+
+function makeRoute(runSeed) {
+  seed = runSeed;
+  const segs = [];
+  let x = 0, z = 0, dir = 0, dist = 0;
+  // "net" counts quarter-turns away from north. Keeping it between -1 and 1
+  // means the trail only ever heads north, east or west, so it can never loop
+  // back and cross itself.
+  let net = 0;
+  for (let i = 0; i < SEGMENTS; i++) {
+    const last = i === SEGMENTS - 1;
+    const len = i === 0 ? 90 : last ? 70 : 72 + Math.floor(rand() * 45);
+    const d = DIRS[dir];
+    const seg = {
+      i, len, dir, last,
+      x0: x, z0: z,              // where it starts
+      dx: d.x, dz: d.z,          // which way is forward
+      rx: -d.z, rz: d.x,         // which way is right
+      ang: Math.atan2(-d.x, -d.z), // the same direction as an angle, for turning models
+      start: dist,               // route distance at its start
+      turn: 0, fork: false,
+      obstacles: [], items: [], group: null,
+    };
+    if (!last) {
+      let t = rand() < 0.5 ? -1 : 1;
+      if (Math.abs(net + t) > 1) t = -t;
+      seg.turn = t;                       // -1 = turn left at the end, 1 = right
+      seg.fork = i > 0 && rand() < 0.6;   // forks also show a wrong way (with coyotes)
+      net += t;
+    }
+    fillSegment(seg, i / (SEGMENTS - 1));
+    segs.push(seg);
+    x += d.x * len; z += d.z * len; dist += len;
+    dir = (dir + seg.turn + 4) % 4;
+  }
+  TOTAL = dist;
+  return segs;
+}
+
+// Put obstacles, bear tracks and stars along one segment.
+// p is how far through the run this segment is (0 to 1): later segments
+// get more kinds of obstacles and shorter gaps between them.
+function fillSegment(seg, p) {
+  const track = (s, lane) => seg.items.push({ kind: "track", s, lat: lane * LANE_W, y: 0, taken: false });
+  const star = (s, lane, y) => seg.items.push({ kind: "star", s, lat: lane * LANE_W, y, taken: false });
+
+  let s = seg.i === 0 ? 26 : 10;
+  const end = seg.len - (seg.last ? 30 : 22);   // keep the corner clear for turning
+  while (s < end) {
+    const kinds = ["block", "log", "block"];
+    if (p > 0.08) kinds.push("branch");
+    if (p > 0.2) kinds.push("stream");
+    if (p > 0.4) kinds.push("block", "branch", "log");
+    const ob = { kind: pick(kinds), s, lanes: [], done: false };
+    let open = pick([-1, 0, 1]);        // a lane that's safe to run in
+    if (ob.kind === "block") {
+      // A rock, stump or thorn bush blocks one or two lanes. They all work the same way.
+      ob.look = pick(["rock", "stump", "thorns"]);
+      if (p > 0.3 && rand() < 0.5) ob.lanes = [-1, 0, 1].filter((l) => l !== open); // two blocks, one gap
+      else { ob.lanes = [pick([-1, 0, 1])]; open = ob.lanes[0] === 0 ? pick([-1, 1]) : 0; }
+    }
+    seg.obstacles.push(ob);
+    // A star above every log and stream rewards the jump.
+    if (ob.kind === "log" || ob.kind === "stream") star(s, pick([-1, 0, 1]), 2.0);
+
+    const gap = 17 - 5 * p + rand() * 6;
+    const r = rand();
+    if (r < 0.55) {
+      // A row of bear tracks in the gap, in the safe lane.
+      for (let k = 0; k < 5; k++) {
+        const ts = s + 4 + k * 1.8;
+        if (ts < s + gap - 3) track(ts, open);
+      }
+    } else if (r < 0.9) {
+      // A row of three stars.
+      for (let k = 0; k < 3; k++) {
+        const ts = s + gap / 2 - 2 + k * 2;
+        if (ts > s + 2.5 && ts < s + gap - 2.5) star(ts, open, 1.0);
+      }
+    }
+    s += gap;
+  }
+  // Glowing tracks lead around every corner: into it here...
+  if (!seg.last) for (let k = 0; k < 6; k++) track(seg.len - 12 + k * 2, 0);
+  // ...and out of it at the start of the next segment.
+  if (seg.i > 0) for (let k = 0; k < 4; k++) track(1 + k * 2, 0);
+}
+
+// Turn (segment, s, lat) into a world position.
+function worldXZ(seg, s, lat) {
+  return { x: seg.x0 + seg.dx * s + seg.rx * lat, z: seg.z0 + seg.dz * s + seg.rz * lat };
+}
+
+// Rectangles where trees must not grow: the trail itself, fork stubs, and
+// the clearing around home. Trees only check these, so a trail planned
+// later can't end up with a tree in the middle of it.
+let CLEAR = [];
+function rectAround(seg, s1, s2, half) {
+  const pts = [worldXZ(seg, s1, -half), worldXZ(seg, s2, half)];
+  return {
+    x1: Math.min(pts[0].x, pts[1].x), x2: Math.max(pts[0].x, pts[1].x),
+    z1: Math.min(pts[0].z, pts[1].z), z2: Math.max(pts[0].z, pts[1].z),
+  };
+}
+function planClearings() {
+  CLEAR = [];
+  for (const seg of route) {
+    CLEAR.push(rectAround(seg, -TRAIL_HALF - 0.5, seg.len + TRAIL_HALF + 0.5, TRAIL_HALF + 0.5));
+    if (seg.fork) {
+      // The stub runs sideways from the corner, so in this segment's terms
+      // it stays at s = len and stretches along lat.
+      const side = -seg.turn;
+      const a = worldXZ(seg, seg.len - TRAIL_HALF - 0.5, 0), b = worldXZ(seg, seg.len + TRAIL_HALF + 0.5, side * 15);
+      CLEAR.push({ x1: Math.min(a.x, b.x), x2: Math.max(a.x, b.x), z1: Math.min(a.z, b.z), z2: Math.max(a.z, b.z) });
+    }
+    if (seg.last) CLEAR.push(rectAround(seg, seg.len - 6, seg.len + 34, 16));
+  }
+}
+function isClear(x, z, r) {
+  return !CLEAR.some((c) => x > c.x1 - r && x < c.x2 + r && z > c.z1 - r && z < c.z2 + r);
+}
+
+// ---------------------------------------------------------------------
+// 3. THE LOOK
+// ---------------------------------------------------------------------
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.prepend(renderer.domElement);
+
+const HORIZON = 0xf6cf9e;   // the fog fades everything far away into this color
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(HORIZON);
+scene.fog = new THREE.Fog(HORIZON, 30, 110);
+const camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.1, 500);
+
+// The sky is a huge ball around the camera, painted from the inside by a
+// tiny shader program: blue overhead, peach lower down, a glowing sun low in
+// the west, and the fog color right at the horizon so the edges blend.
+const SUN_DIR = new THREE.Vector3(-0.55, 0.13, -0.82).normalize();
+const sky = new THREE.Mesh(
+  new THREE.SphereGeometry(400, 32, 16),
+  new THREE.ShaderMaterial({
+    side: THREE.BackSide, depthWrite: false, fog: false,
+    uniforms: {
+      top: { value: new THREE.Color(0x5b74b8) },
+      mid: { value: new THREE.Color(0xf3a97c) },
+      low: { value: new THREE.Color(HORIZON) },
+      sunDir: { value: SUN_DIR },
+    },
+    vertexShader: `
+      varying vec3 vDir;
+      void main() {
+        vDir = normalize(position);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }`,
+    fragmentShader: `
+      uniform vec3 top; uniform vec3 mid; uniform vec3 low; uniform vec3 sunDir;
+      varying vec3 vDir;
+      void main() {
+        vec3 d = normalize(vDir);
+        vec3 c = mix(mid, top, pow(clamp(d.y * 1.7, 0.0, 1.0), 0.75));
+        c = mix(low, c, smoothstep(0.0, 0.12, d.y));
+        float s = max(dot(d, sunDir), 0.0);
+        c += vec3(1.0, 0.85, 0.55) * pow(s, 400.0) * 1.2;   // the sun itself
+        c += vec3(1.0, 0.7, 0.4) * pow(s, 8.0) * 0.35;      // its glow
+        gl_FragColor = vec4(c, 1.0);
+      }`,
+  })
+);
+sky.renderOrder = -1;
+scene.add(sky);
+
+scene.add(new THREE.HemisphereLight(0xffe4bc, 0x3a5a2a, 0.85));
+// The sun casts real shadows. Its light follows Walter, so only the patch of
+// woods around him needs shadows worked out.
+const sun = new THREE.DirectionalLight(0xffd29a, 0.95);
+const SUN_OFFSET = new THREE.Vector3(-26, 34, -40);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -34, right: 34, top: 34, bottom: -34, near: 1, far: 140 });
+sun.shadow.bias = -0.0006;
+sun.shadow.normalBias = 0.03;
+scene.add(sun, sun.target);
+// A soft light from behind the camera, so faces turned our way aren't lost in shadow.
+const fill = new THREE.DirectionalLight(0xffeedd, 0.35);
+scene.add(fill, fill.target);
+
+// One material per look, shared by everything that uses it. "Standard"
+// materials shade smoothly and treat light the way real surfaces do:
+// roughness 1 is chalky, lower values get a soft shine.
+const matCache = {};
+function std(color, extra) {
+  const key = color + (extra ? JSON.stringify(extra) : "");
+  if (!matCache[key]) matCache[key] = new THREE.MeshStandardMaterial(Object.assign({ color, roughness: 0.85, metalness: 0 }, extra));
+  return matCache[key];
+}
+
+// Draw a small picture on a canvas and use it as a texture.
+function canvasTexture(w, h, draw) {
+  const c = document.createElement("canvas");
+  c.width = w; c.height = h;
+  draw(c.getContext("2d"), w, h);
+  const tex = new THREE.CanvasTexture(c);
+  tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  return tex;
+}
+function speckle(g, w, h, n, colors, rMin, rMax) {
+  for (let k = 0; k < n; k++) {
+    g.fillStyle = colors[Math.floor(Math.random() * colors.length)];
+    g.beginPath();
+    g.ellipse(Math.random() * w, Math.random() * h, rMin + Math.random() * (rMax - rMin), rMin + Math.random() * (rMax - rMin), Math.random() * 3, 0, Math.PI * 2);
+    g.fill();
+  }
+}
+// Repeating textures tile over and over, like floor tiles.
+function tiling(tex, rx, ry) {
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(rx, ry);
+  return tex;
+}
+
+const grassTex = tiling(canvasTexture(256, 256, (g, w, h) => {
+  g.fillStyle = "#4d7838"; g.fillRect(0, 0, w, h);
+  speckle(g, w, h, 2600, ["#447033", "#57843f", "#3e6a2e", "#5f8c44", "#4a7a36"], 1, 3.5);
+}), 500, 500);
+const dirtTex = tiling(canvasTexture(256, 256, (g, w, h) => {
+  g.fillStyle = "#9d7c53"; g.fillRect(0, 0, w, h);
+  speckle(g, w, h, 2200, ["#927149", "#a8885e", "#8a6a44", "#b0926a"], 1, 3);
+  speckle(g, w, h, 60, ["#8c8a84", "#a09c94", "#77746e"], 2.5, 5);   // pebbles
+}), 1, 1);
+// Bark: long dark and light streaks running up the trunk.
+const barkTex = tiling(canvasTexture(128, 256, (g, w, h) => {
+  g.fillStyle = "#5e4029"; g.fillRect(0, 0, w, h);
+  for (let k = 0; k < 90; k++) {
+    g.fillStyle = Math.random() < 0.6 ? "rgba(30,18,10,0.55)" : "rgba(140,105,75,0.4)";
+    const x = Math.random() * w, bw = 1 + Math.random() * 3;
+    g.fillRect(x, Math.random() * h - 40, bw, 40 + Math.random() * 160);
+  }
+}), 2, 1);
+// Tree rings, for the cut ends of logs and the tops of stumps.
+const ringTex = canvasTexture(128, 128, (g) => {
+  g.fillStyle = "#d8b680"; g.fillRect(0, 0, 128, 128);
+  for (let r = 6; r < 64; r += 5 + Math.random() * 3) {
+    g.strokeStyle = "rgba(120,80,40,0.55)"; g.lineWidth = 1.5;
+    g.beginPath(); g.arc(64 + Math.random() * 2, 64, r, 0, Math.PI * 2); g.stroke();
+  }
+  g.strokeStyle = "#5e4029"; g.lineWidth = 8; g.beginPath(); g.arc(64, 64, 60, 0, Math.PI * 2); g.stroke();
+});
+
+// A bear paw print, glowing with Major's stardust. Toes and claws point to
+// the top of the canvas, which ends up pointing forward along the trail.
+// Front paws leave a wide pad; hind paws leave a long one, a bit like ours.
+function bearPrint(hind) {
+  return canvasTexture(128, 160, (g) => {
+    const glow = g.createRadialGradient(64, 95, 6, 64, 95, 78);
+    glow.addColorStop(0, "rgba(140, 220, 255, 0.55)");
+    glow.addColorStop(1, "rgba(140, 220, 255, 0)");
+    g.fillStyle = glow; g.fillRect(0, 0, 128, 160);
+    g.fillStyle = "#f2fbff";
+    g.strokeStyle = "#f2fbff";
+    g.shadowColor = "#8fdcff"; g.shadowBlur = 4;
+    g.beginPath();
+    let toes;
+    if (hind) {
+      g.moveTo(26, 78); g.quadraticCurveTo(64, 60, 102, 78);
+      g.quadraticCurveTo(106, 114, 86, 148); g.quadraticCurveTo(64, 160, 44, 148);
+      g.quadraticCurveTo(22, 114, 26, 78);
+      toes = [[22, 50], [41, 35], [64, 29], [87, 35], [106, 50]];
+    } else {
+      g.moveTo(20, 96); g.quadraticCurveTo(64, 74, 108, 96);
+      g.quadraticCurveTo(114, 126, 88, 132); g.quadraticCurveTo(64, 138, 40, 132);
+      g.quadraticCurveTo(14, 126, 20, 96);
+      toes = [[18, 66], [38, 50], [64, 44], [90, 50], [110, 66]];
+    }
+    g.fill();
+    if (!hind) { g.beginPath(); g.ellipse(64, 151, 8, 6, 0, 0, Math.PI * 2); g.fill(); }  // the little wrist pad
+    g.lineWidth = 3.5; g.lineCap = "round";
+    for (const [x, y] of toes) {
+      const a = Math.atan2(y - 110, x - 64);       // each toe fans out from the pad
+      g.beginPath(); g.ellipse(x, y, 8.5, 11, a + Math.PI / 2, 0, Math.PI * 2); g.fill();
+      g.beginPath();                               // the claw mark
+      g.moveTo(x + Math.cos(a) * 13, y + Math.sin(a) * 13);
+      g.lineTo(x + Math.cos(a) * 21, y + Math.sin(a) * 21);
+      g.stroke();
+    }
+  });
+}
+const printMats = [false, true].map((hind) =>
+  new THREE.MeshBasicMaterial({ map: bearPrint(hind), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+
+// A soft round glow, used for star halos, fireflies and sparkles.
+const glowTex = canvasTexture(64, 64, (g) => {
+  const r = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  r.addColorStop(0, "rgba(255,255,255,1)"); r.addColorStop(0.3, "rgba(255,255,255,0.6)"); r.addColorStop(1, "rgba(255,255,255,0)");
+  g.fillStyle = r; g.fillRect(0, 0, 64, 64);
+});
+
+// A soft dark circle under Walter, so you can tell how high he jumps.
+const blobTex = canvasTexture(64, 64, (g) => {
+  const r = g.createRadialGradient(32, 32, 2, 32, 32, 30);
+  r.addColorStop(0, "rgba(0,0,0,0.28)"); r.addColorStop(1, "rgba(0,0,0,0)");
+  g.fillStyle = r; g.fillRect(0, 0, 64, 64);
+});
+
+// A wooden sign with an arrow, one for each way.
+function arrowTexture(way) {
+  return canvasTexture(256, 160, (g) => {
+    g.fillStyle = "#8b5a2b"; g.fillRect(0, 0, 256, 160);
+    for (let y = 18; y < 160; y += 26) { g.fillStyle = "rgba(0,0,0,0.12)"; g.fillRect(0, y, 256, 3); }  // wood grain
+    g.strokeStyle = "#5a3a1a"; g.lineWidth = 10; g.strokeRect(5, 5, 246, 150);
+    g.translate(128, 80); g.scale(way, 1);
+    g.fillStyle = "#c8f3ff"; g.shadowColor = "#3ac0ff"; g.shadowBlur = 12;
+    g.beginPath();
+    g.moveTo(-80, -18); g.lineTo(20, -18); g.lineTo(20, -50); g.lineTo(85, 0);
+    g.lineTo(20, 50); g.lineTo(20, 18); g.lineTo(-80, 18); g.closePath(); g.fill();
+  });
+}
+const signMats = {
+  "-1": new THREE.MeshStandardMaterial({ map: arrowTexture(-1), emissive: 0x332211, roughness: 0.9 }),
+  "1": new THREE.MeshStandardMaterial({ map: arrowTexture(1), emissive: 0x332211, roughness: 0.9 }),
+};
+
+// --- Sculpting helpers -------------------------------------------------
+// A smooth bumpy "noise" value for any point in space. Nearby points get
+// similar values, so shapes pushed by it look lumpy, not jagged.
+function noise3(x, y, z, s) {
+  return Math.sin(x * 2.1 + s) * Math.sin(y * 2.7 + s * 1.7) * Math.sin(z * 2.3 + s * 2.3)
+    + 0.5 * Math.sin(x * 5.3 + s * 3.1) * Math.sin(y * 4.9 + s) * Math.sin(z * 5.7 + s * 0.7);
+}
+// Push every point of a shape in or out along its surface, then recompute
+// the shading so the bumps catch the light.
+function lumpy(geo, amount, s = 1, scale = 1) {
+  const p = geo.attributes.position, n = geo.attributes.normal;
+  for (let i = 0; i < p.count; i++) {
+    const d = noise3(p.getX(i) * scale, p.getY(i) * scale, p.getZ(i) * scale, s) * amount;
+    p.setXYZ(i, p.getX(i) + n.getX(i) * d, p.getY(i) + n.getY(i) * d, p.getZ(i) + n.getZ(i) * d);
+  }
+  geo.computeVertexNormals();
+  return geo;
+}
+const sph = (r, seg = 20) => new THREE.SphereGeometry(r, seg, Math.round(seg * 0.75));
+// Glue several shapes into one, so a whole tree top draws in one step.
+function merge(list) {
+  const pos = [], nor = [], idx = [];
+  let off = 0;
+  for (const g of list) {
+    const p = g.attributes.position, n = g.attributes.normal;
+    for (let i = 0; i < p.count; i++) { pos.push(p.getX(i), p.getY(i), p.getZ(i)); nor.push(n.getX(i), n.getY(i), n.getZ(i)); }
+    if (g.index) for (let i = 0; i < g.index.count; i++) idx.push(g.index.getX(i) + off);
+    else for (let i = 0; i < p.count; i++) idx.push(i + off);
+    off += p.count;
+  }
+  const out = new THREE.BufferGeometry();
+  out.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  out.setAttribute("normal", new THREE.Float32BufferAttribute(nor, 3));
+  out.setIndex(idx);
+  return out;
+}
+// A pill shape: a round end of radius r1 at the bottom and r2 at the top,
+// len apart. It's made by spinning an outline around, like a potter's wheel
+// (that's what "lathe" means).
+function capsule(r1, r2, len, seg = 14) {
+  const pts = [];
+  for (let k = 0; k <= 6; k++) { const a = -Math.PI / 2 + k * Math.PI / 12; pts.push(new THREE.Vector2(Math.cos(a) * r1, Math.sin(a) * r1)); }
+  for (let k = 0; k <= 6; k++) { const a = k * Math.PI / 12; pts.push(new THREE.Vector2(Math.cos(a) * r2, len + Math.sin(a) * r2)); }
+  return new THREE.LatheGeometry(pts, seg);
+}
+// An arm or leg piece hanging down from its joint: thick end at the joint.
+const limbGeo = (rTop, rBot, len) => capsule(rBot, rTop, len).translate(0, -len, 0);
+// Spin an outline of [radius, height] pairs into a round body.
+const lathe = (pairs, seg = 24) => new THREE.LatheGeometry(pairs.map(([r, y]) => new THREE.Vector2(r, y)), seg);
+
+// --- Shapes for the woods ----------------------------------------------
+// A pine: tiers of cones with ragged, drooping edges.
+function pineGeo(s) {
+  const tiers = [];
+  for (let i = 0; i < 4; i++) {
+    const r = 1.9 - i * 0.42, h = 2.3 - i * 0.15, y = 1.5 + i * 1.05;
+    const cone = new THREE.ConeGeometry(r, h, 20, 3).translate(0, y + h / 2, 0);
+    const p = cone.attributes.position;
+    for (let k = 0; k < p.count; k++) {
+      const x = p.getX(k), z = p.getZ(k), yy = p.getY(k);
+      const a = Math.atan2(z, x), edge = Math.hypot(x, z) / r;   // 1 at the rim, 0 at the tip
+      const jag = 1 + 0.16 * Math.sin(a * 7 + i * 2 + s) + 0.08 * Math.sin(a * 13 + s);
+      p.setXYZ(k, x * jag, yy - edge * edge * 0.25, z * jag);
+    }
+    cone.computeVertexNormals();
+    tiers.push(cone);
+  }
+  return merge(tiers);
+}
+// A leafy tree top: a cluster of lumpy balls.
+function canopyGeo(s) {
+  const balls = [[0, 3.9, 0, 1.5], [0.9, 3.5, 0.3, 1.1], [-0.8, 3.6, -0.4, 1.15], [0.2, 4.6, -0.5, 1.05], [-0.3, 3.3, 0.9, 1.0]];
+  return merge(balls.map(([x, y, z, r], k) => lumpy(sph(r, 18), r * 0.22, s + k, 1.3).translate(x, y, z)));
+}
+function bushGeo(s) {
+  return merge([[0, 0, 0, 0.7], [0.5, -0.1, 0.2, 0.5], [-0.45, -0.1, -0.15, 0.55]]
+    .map(([x, y, z, r], k) => lumpy(sph(r, 14), r * 0.25, s + k, 2).translate(x, y, z)));
+}
+function rockGeo(s) {
+  return lumpy(sph(0.62, 18), 0.16, s, 1.6).scale(1.1, 0.78, 1);
+}
+// A tuft of grass: a few thin blades leaning outward.
+function tuftGeo() {
+  const blades = [];
+  for (let k = 0; k < 6; k++) {
+    const a = k * 1.05;
+    blades.push(new THREE.ConeGeometry(0.035, 0.5 + (k % 3) * 0.12, 5).translate(0, 0.25, 0)
+      .rotateZ(Math.cos(a) * 0.35).rotateX(Math.sin(a) * 0.35).translate(Math.cos(a) * 0.05, 0, Math.sin(a) * 0.05));
+  }
+  return merge(blades);
+}
+// A little flower: five petals around a middle.
+function flowerGeo() {
+  const parts = [sph(0.045, 10).translate(0, 0.3, 0)];
+  for (let k = 0; k < 5; k++) {
+    const a = k * Math.PI * 2 / 5;
+    parts.push(sph(0.05, 10).scale(1, 0.4, 0.7).translate(Math.cos(a) * 0.07, 0.29, Math.sin(a) * 0.07));
+  }
+  return merge(parts);
+}
+
+// A five-pointed star shape, pushed out into 3D with rounded edges.
+const starShape = new THREE.Shape();
+for (let k = 0; k < 10; k++) {
+  const r = k % 2 ? 0.2 : 0.48, a = Math.PI / 2 + k * Math.PI / 5;
+  if (k === 0) starShape.moveTo(Math.cos(a) * r, Math.sin(a) * r);
+  else starShape.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+}
+
+// Shapes shared by every copy. Moving a shape with translate() puts its
+// bottom at y = 0, so a tree can be placed by its foot.
+const GEO = {
+  flat: new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2),   // a 1x1 tile lying on the ground
+  trunk: new THREE.CylinderGeometry(0.16, 0.32, 2.8, 12).translate(0, 1.4, 0),
+  pines: [pineGeo(1), pineGeo(4)],
+  canopies: [canopyGeo(2), canopyGeo(7)],
+  bushes: [bushGeo(3), bushGeo(9)],
+  rocks: [rockGeo(5), rockGeo(11)],
+  grass: tuftGeo(),
+  flower: flowerGeo(),
+  stump: new THREE.CylinderGeometry(0.48, 0.62, 0.85, 16).translate(0, 0.42, 0),
+  ringTop: new THREE.CircleGeometry(0.48, 20).rotateX(-Math.PI / 2),
+  log: new THREE.CylinderGeometry(0.32, 0.35, TRAIL_HALF * 2 + 0.6, 20).rotateZ(Math.PI / 2),
+  logEnd: new THREE.CircleGeometry(0.32, 20).rotateY(Math.PI / 2),
+  branch: new THREE.CylinderGeometry(0.12, 0.2, TRAIL_HALF * 2 + 2, 12).rotateZ(Math.PI / 2),
+  post: new THREE.CylinderGeometry(0.1, 0.1, 2.2, 10).translate(0, 1.1, 0),
+  sign: new THREE.PlaneGeometry(2.0, 1.25),
+  print: new THREE.PlaneGeometry(1.15, 1.8).rotateX(-Math.PI / 2),
+  star: new THREE.ExtrudeGeometry(starShape, { depth: 0.14, bevelEnabled: true, bevelThickness: 0.05, bevelSize: 0.05, bevelSegments: 3 }).center(),
+  eye: new THREE.SphereGeometry(0.08, 10, 8),
+  berry: new THREE.SphereGeometry(0.07, 10, 8),
+};
+const MAT = {
+  ground: new THREE.MeshStandardMaterial({ map: grassTex, roughness: 1 }),
+  trail: new THREE.MeshStandardMaterial({ map: dirtTex, roughness: 1 }),
+  bark: new THREE.MeshStandardMaterial({ map: barkTex, roughness: 1 }),
+  rings: new THREE.MeshStandardMaterial({ map: ringTex, roughness: 0.9 }),
+  foliage: std(0xffffff, { roughness: 0.9 }),   // white, so each plant's own tint shows
+  bush: std(0x3e7232, { roughness: 0.9 }), bramble: std(0x2c4a26, { roughness: 0.9 }), thorns: std(0x34502a, { roughness: 0.9 }),
+  berry: std(0xc0283a, { roughness: 0.35 }), leaves: std(0x5d9440, { roughness: 0.9 }),
+  rock: std(0x8f8c86, { roughness: 0.95 }),
+  water: new THREE.MeshStandardMaterial({ color: 0x4f9fd0, emissive: 0x15405a, roughness: 0.15, metalness: 0.1, transparent: true, opacity: 0.88 }),
+  star: std(0xffd84a, { emissive: 0x9a7000, roughness: 0.35, metalness: 0.3 }),
+  eye: new THREE.MeshBasicMaterial({ color: 0xffee55 }),
+};
+const starGlowMat = new THREE.SpriteMaterial({ map: glowTex, color: 0xffd860, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.7 });
+
+// Tree and plant tints, so the forest isn't one flat green.
+const PINE_TINTS = [0x2f5e34, 0x2a5530, 0x356a3a, 0x3b6b35, 0x28503a].map((c) => new THREE.Color(c));
+const LEAF_TINTS = [0x4f8a3a, 0x5d9440, 0x6b9a3a, 0x8a9a3a, 0xb08a3a, 0x4a7f3a].map((c) => new THREE.Color(c));
+const GRASS_TINTS = [0x5a8c3a, 0x6c9a44, 0x4f7f34, 0x7da44a].map((c) => new THREE.Color(c));
+const FLOWER_TINTS = [0xffffff, 0xffe066, 0xc9a0ff, 0xff9fb0].map((c) => new THREE.Color(c));
+
+// The ground under everything.
+const ground = new THREE.Mesh(GEO.flat, MAT.ground);
+ground.scale.set(6000, 1, 6000);
+ground.receiveShadow = true;
+scene.add(ground);
+
+// ---------------------------------------------------------------------
+// 4. THE WORLD
+// ---------------------------------------------------------------------
+
+// A quick way to add a mesh at a spot inside a group. Solid things cast
+// shadows; flat things on the ground only receive them.
+function put(group, geo, mat, x, y, z, solid = true) {
+  const m = new THREE.Mesh(geo, mat);
+  m.position.set(x, y, z);
+  m.castShadow = solid;
+  m.receiveShadow = true;
+  group.add(m);
+  return m;
+}
+
+// A strip of trail lying on the ground. Its texture repeats every 6 units
+// instead of stretching, so long and short strips look the same.
+function trailStrip(group, x, z, width, length) {
+  const geo = new THREE.PlaneGeometry(width, length).rotateX(-Math.PI / 2);
+  const uv = geo.attributes.uv;
+  for (let k = 0; k < uv.count; k++) uv.setXY(k, uv.getX(k) * width / 6, uv.getY(k) * length / 6);
+  const m = put(group, geo, MAT.trail, x, 0.02, z, false);
+  m.userData.ownGeometry = true;   // so dropSegment knows to free it
+  return m;
+}
+
+// Instancing draws many copies of one shape in a single step. A segment
+// has a couple hundred trees and plants; drawing them one by one would be slow.
+function instanced(group, geo, mat, spots, castShadow = true) {
+  if (!spots.length) return;
+  const mesh = new THREE.InstancedMesh(geo, mat, spots.length);
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0);
+  spots.forEach((p, k) => {
+    q.setFromAxisAngle(up, p.spin || 0);
+    m.compose(new THREE.Vector3(p.x, p.y || 0, p.z), q, new THREE.Vector3(p.sc, p.sy || p.sc, p.sc));
+    mesh.setMatrixAt(k, m);
+    if (p.color && mat === MAT.foliage) mesh.setColorAt(k, p.color);   // tints are for leaves, not trunks
+  });
+  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+  mesh.castShadow = castShadow;
+  mesh.receiveShadow = true;
+  group.add(mesh);
+}
+const anyOf = (list) => list[Math.floor(Math.random() * list.length)];
+// Split a list of spots between the shape variants, then draw each batch.
+function instancedVariants(group, geos, mat, spots, castShadow) {
+  geos.forEach((geo, v) => instanced(group, geo, mat, spots.filter((p, k) => k % geos.length === v), castShadow));
+}
+
+// A star with a soft halo around it.
+function makeStar(group, x, y, z) {
+  const m = put(group, GEO.star, MAT.star, x, y, z, false);
+  const halo = new THREE.Sprite(starGlowMat);
+  halo.scale.set(1.5, 1.5, 1);
+  m.add(halo);
+  return m;
+}
+
+// Build everything for one segment inside a group. Inside the group,
+// x is sideways (lat) and -z is forward (s), so the group can simply be
+// placed at the segment's start and turned to face its direction.
+function buildSegment(seg) {
+  const g = new THREE.Group();
+  g.position.set(seg.x0, 0, seg.z0);
+  g.rotation.y = seg.ang;
+  seg.group = g;
+  scene.add(g);
+  const L = seg.len;
+
+  trailStrip(g, 0, -L / 2, TRAIL_HALF * 2, L + TRAIL_HALF * 2);
+
+  // Trees, bushes, grass and flowers, anywhere outside the cleared rectangles.
+  const pines = [], leafies = [], bushes = [], grass = [], flowers = [];
+  for (let s = -8; s < L + 8; s += 2.4) {
+    for (const side of [-1, 1]) {
+      for (let row = 0; row < 3; row++) {
+        const lat = side * (TRAIL_HALF + 1.8 + row * 4.6 + Math.random() * 3.2);
+        const ts = s + (Math.random() - 0.5) * 2;
+        const w = worldXZ(seg, ts, lat);
+        if (!isClear(w.x, w.z, 1.5)) continue;
+        const pine = Math.random() < 0.6;
+        const spot = { x: lat, z: -ts, sc: 0.8 + Math.random() * 0.7, spin: Math.random() * 6, color: anyOf(pine ? PINE_TINTS : LEAF_TINTS) };
+        (pine ? pines : leafies).push(spot);
+      }
+      const bl = side * (TRAIL_HALF + 0.7 + Math.random() * 0.6), bs = s + Math.random() * 2;
+      const bw = worldXZ(seg, bs, bl);
+      if (isClear(bw.x, bw.z, 0.2)) bushes.push({ x: bl, y: 0.35, z: -bs, sc: 0.6 + Math.random() * 0.5, spin: Math.random() * 6 });
+      // Grass and flowers right along the trail's edge.
+      for (let k = 0; k < 4; k++) {
+        const gl = side * (TRAIL_HALF - 0.1 + Math.random() * 1.6), gs = s + Math.random() * 2.4;
+        const gw = worldXZ(seg, gs, gl);
+        if (!isClear(gw.x, gw.z, -0.15)) continue;
+        if (Math.random() < 0.25) flowers.push({ x: gl, z: -gs, sc: 1, spin: Math.random() * 6, color: anyOf(FLOWER_TINTS) });
+        else grass.push({ x: gl, z: -gs, sc: 0.7 + Math.random() * 0.8, spin: Math.random() * 6, color: anyOf(GRASS_TINTS) });
+      }
+    }
+  }
+  instanced(g, GEO.trunk, MAT.bark, pines.concat(leafies));
+  instancedVariants(g, GEO.pines, MAT.foliage, pines);
+  instancedVariants(g, GEO.canopies, MAT.foliage, leafies);
+  instancedVariants(g, GEO.bushes, MAT.bush, bushes);
+  instanced(g, GEO.grass, MAT.foliage, grass, false);
+  instanced(g, GEO.flower, MAT.foliage, flowers, false);
+
+  if (seg.turn) {
+    // Straight ahead is a dead end: a bush wall with an arrow sign.
+    const wall = [];
+    for (let x = -3.6; x <= 3.6; x += 1.2) wall.push({ x, y: 0.55, z: -(L + TRAIL_HALF + 1.4), sc: 1.1 + Math.random() * 0.3, spin: x });
+    instancedVariants(g, GEO.bushes, MAT.bush, wall);
+    put(g, GEO.post, MAT.bark, 0, 0, -(L + TRAIL_HALF + 0.2));
+    put(g, GEO.sign, signMats[seg.turn], 0, 2.0, -(L + TRAIL_HALF + 0.1));
+    trailStrip(g, seg.turn * (TRAIL_HALF + 4), -L, 8, TRAIL_HALF * 2);   // the side trail, the one to take
+  }
+  if (seg.fork) {
+    // The wrong way: a short trail into brambles, with eyes watching.
+    const way = -seg.turn;
+    trailStrip(g, way * 7, -L, 14, TRAIL_HALF * 2);
+    const brambles = [];
+    for (let z = -2.8; z <= 2.8; z += 1.1) brambles.push({ x: way * 13.5, y: 0.6, z: -L + z, sc: 1.3, spin: z });
+    instancedVariants(g, GEO.bushes, MAT.bramble, brambles);
+    for (const [dz, dy] of [[-0.9, 1.0], [1.2, 0.8]]) {
+      for (const e of [-0.17, 0.17]) put(g, GEO.eye, MAT.eye, way * 12.3, dy, -L + dz + e, false);
+    }
+  }
+
+  // Obstacles. Each remembers its meshes, so a cameo can clear it away.
+  for (const ob of seg.obstacles) {
+    const z = -ob.s, before = g.children.length;
+    if (ob.kind === "log") {
+      put(g, GEO.log, MAT.bark, 0, 0.32, z);
+      for (const x of [-1, 1]) {
+        const end = put(g, GEO.logEnd, MAT.rings, x * (TRAIL_HALF + 0.31), 0.32, z, false);
+        if (x < 0) end.rotation.y = Math.PI;
+      }
+    } else if (ob.kind === "stream") {
+      // A little stream across the trail, with stepping stones on its banks.
+      const water = put(g, GEO.flat, MAT.water, 0, 0.04, z, false);
+      water.scale.set(TRAIL_HALF * 2 + 6, 1, 1.7);
+      ob.water = water;
+      for (const x of [-4.2, -3.6, 3.7, 4.4]) {
+        const st = put(g, anyOf(GEO.rocks), MAT.rock, x, 0.05, z + (Math.random() - 0.5) * 1.4);
+        st.scale.set(0.5, 0.35, 0.5);
+      }
+    } else if (ob.kind === "branch") {
+      // A low branch from a tree beside the trail, with leaves hanging off it.
+      const b = put(g, GEO.branch, MAT.bark, 0, 1.35, z);
+      b.rotation.z = 0.04;
+      for (const x of [-2.2, -0.6, 1.0, 2.5]) {
+        const leaf = put(g, anyOf(GEO.bushes), MAT.leaves, x, 1.5, z);
+        leaf.scale.set(0.75, 0.5, 0.6);
+      }
+      put(g, GEO.trunk, MAT.bark, TRAIL_HALF + 1.4, 0, z).scale.set(1.3, 1.2, 1.3);
+    } else {
+      for (const lane of ob.lanes) {
+        const x = lane * LANE_W;
+        if (ob.look === "rock") {
+          const rock = put(g, anyOf(GEO.rocks), MAT.rock, x, 0.4, z);
+          rock.scale.setScalar(1 + Math.random() * 0.2);
+          rock.rotation.y = Math.random() * 6;
+        } else if (ob.look === "stump") {
+          put(g, GEO.stump, MAT.bark, x, 0, z);
+          put(g, GEO.ringTop, MAT.rings, x, 0.86, z, false);
+        } else {
+          const bush = put(g, anyOf(GEO.bushes), MAT.thorns, x, 0.55, z);
+          bush.scale.set(1, 0.85, 0.9);
+          for (let k = 0; k < 7; k++) {
+            const a = k * 0.9;
+            put(g, GEO.berry, MAT.berry, x + Math.cos(a) * 0.62, 0.45 + (k % 3) * 0.22, z + Math.sin(a) * 0.5, false);
+          }
+        }
+      }
+    }
+    ob.meshes = g.children.slice(before);
+  }
+
+  // Bear tracks and stars. Tracks step a little left and right, front paw
+  // then hind paw, the way a walking bear leaves them.
+  let foot = 0;
+  for (const it of seg.items) {
+    if (it.taken) continue;
+    if (it.kind === "track") {
+      foot++;
+      it.mesh = put(g, GEO.print, printMats[foot % 2], it.lat + (foot % 2 ? 0.22 : -0.22), 0.05, -it.s, false);
+    } else {
+      it.mesh = makeStar(g, it.lat, it.y, -it.s);
+    }
+  }
+
+  if (seg.last) buildHome(g, L);
+}
+
+// Walter's house in a clearing at the end of the trail, with Mom and Dad.
+let mom = null, dad = null;
+function buildHome(g, L) {
+  const lawn = grassTex.clone();
+  lawn.needsUpdate = true;
+  lawn.repeat.set(3, 3);
+  const clearing = put(g, GEO.flat, new THREE.MeshStandardMaterial({ map: lawn, color: 0xd8f0b8, roughness: 1 }), 0, 0.015, -(L + 14), false);
+  clearing.scale.set(30, 1, 30);
+  trailStrip(g, 0, -(L + 10), TRAIL_HALF * 2, 20);
+
+  // A ring of woods around the clearing, leaving a gap where the trail comes in.
+  const ring = [];
+  for (let a = 0; a < Math.PI * 2; a += 0.11) {
+    for (const r of [19, 24, 29]) {
+      const x = Math.sin(a) * (r + Math.random() * 3), z = -(L + 16) + Math.cos(a) * (r + Math.random() * 3);
+      if (Math.abs(x) < TRAIL_HALF + 2 && z > -(L + 16)) continue;
+      ring.push({ x, z, sc: 0.9 + Math.random() * 0.6, spin: Math.random() * 6, color: anyOf(PINE_TINTS) });
+    }
+  }
+  instanced(g, GEO.trunk, MAT.bark, ring);
+  instancedVariants(g, GEO.pines, MAT.foliage, ring);
+
+  const house = new THREE.Group();
+  house.position.set(0, 0, -(L + 24));
+  g.add(house);
+  put(house, new THREE.BoxGeometry(9, 4.5, 7), std(0xe9dcc0), 0, 2.25, 0);
+  const roof = put(house, new THREE.ConeGeometry(7.2, 3.4, 4), std(0x8a3b2a, { roughness: 0.7 }), 0, 6.2, 0);
+  roof.rotation.y = Math.PI / 4;
+  roof.scale.set(1, 1, 0.8);
+  put(house, new THREE.BoxGeometry(1.5, 2.6, 0.2), std(0x5a3a22), 0, 1.3, 3.55);
+  const glow = std(0xffe08a, { emissive: 0xffb030 });
+  for (const x of [-2.9, 2.9]) put(house, new THREE.BoxGeometry(1.5, 1.2, 0.15), glow, x, 2.6, 3.56, false);
+  put(house, new THREE.BoxGeometry(1, 3, 1), std(0x7a6a5a), 2.6, 6.6, -1);   // chimney
+  put(house, new THREE.BoxGeometry(11, 0.3, 3), std(0x9a7a5a), 0, 0.15, 5);  // porch
+  // (No porch light: adding a light mid-game makes every material rebuild, which stutters.)
+
+  mom = makePerson({ adult: true, skin: 0xf1c9a5, shirt: 0x8a5cc0, pants: 0x8a5cc0, hair: 0x6b3e1f, eyes: 0x5a3a1a, dress: true, longHair: true, shoes: 0x4a3a3a });
+  dad = makePerson({ adult: true, skin: 0xeec09a, shirt: 0x3d6b3d, pants: 0x5a4a3a, hair: 0x8a6a3a, eyes: 0x3fa9f5, beard: true, shoes: 0x3a2e26 });
+  mom.group.scale.setScalar(1.15);
+  dad.group.scale.setScalar(1.25);
+  mom.group.position.set(-1.6, 0, -(L + 13));
+  dad.group.position.set(1.6, 0, -(L + 13));
+  for (const p of [mom, dad]) { p.group.rotation.y = Math.PI; g.add(p.group); }
+}
+
+// Keep segments built from one behind Walter to two ahead; drop the rest.
+function updateBuilt(current) {
+  route.forEach((seg, i) => {
+    const want = i >= current - 1 && i <= current + 2;
+    if (want && !seg.group) buildSegment(seg);
+    if (!want && seg.group) dropSegment(seg);
+  });
+}
+function dropSegment(seg) {
+  scene.remove(seg.group);
+  // Free what belongs only to this segment: instanced copies and trail strips.
+  seg.group.traverse((o) => {
+    if (o.isInstancedMesh && o.dispose) o.dispose();
+    if (o.userData.ownGeometry) o.geometry.dispose();
+  });
+  seg.group = null;
+}
+
+// ---------------------------------------------------------------------
+// 5. CHARACTERS
+// Everyone is built facing forward (-z), out of body parts hung on joints.
+// A joint is an empty Group placed where the joint is (a hip, a knee).
+// Turning the group swings everything hanging from it, just like a real
+// limb: turn the hip and the knee, shin and foot all come along.
+// ---------------------------------------------------------------------
+function part(parent, geo, mat, x = 0, y = 0, z = 0, sx = 1, sy = sx, sz = sx) {
+  const m = new THREE.Mesh(geo, mat);
+  m.position.set(x, y, z);
+  m.scale.set(sx, sy, sz);
+  parent.add(m);
+  return m;
+}
+function joint(parent, x = 0, y = 0, z = 0) {
+  const j = new THREE.Group();
+  j.position.set(x, y, z);
+  parent.add(j);
+  return j;
+}
+function shadows(group) {
+  group.traverse((o) => { if (o.isMesh && !o.material.isMeshBasicMaterial) o.castShadow = true; });
+  return group;
+}
+// Eyes with a white, a colored iris, a pupil and a tiny shine, so they look alive.
+function addEye(parent, x, y, z, r, iris, flatZ = 0.55) {
+  part(parent, sph(r, 16), std(0xfbfbf8, { roughness: 0.3 }), x, y, z, 1, 1, flatZ);
+  part(parent, sph(r * 0.6, 14), std(iris, { roughness: 0.3 }), x, y, z - r * 0.42, 1, 1, 0.5);
+  part(parent, sph(r * 0.32, 12), std(0x111111, { roughness: 0.2 }), x, y, z - r * 0.52, 1, 1, 0.5);
+  part(parent, sph(r * 0.14, 8), new THREE.MeshBasicMaterial({ color: 0xffffff }), x + r * 0.2, y + r * 0.25, z - r * 0.6);
+}
+
+// --- People: Walter, Mom and Dad all come from this one builder. A kid and
+// a grown-up differ mostly in proportions: a kid's head is much bigger
+// compared to the body, and the legs are shorter.
+function makePerson(o) {
+  const D = o.adult
+    ? { hip: 0.9, thigh: 0.43, shin: 0.41, torso: 0.56, upper: 0.29, fore: 0.26, head: 0.115, neck: 0.07, rLeg: 0.075, rArm: 0.05, waist: 0.14, chest: 0.17 }
+    : { hip: 0.6, thigh: 0.29, shin: 0.27, torso: 0.36, upper: 0.2, fore: 0.18, head: 0.145, neck: 0.04, rLeg: 0.066, rArm: 0.043, waist: 0.115, chest: 0.13 };
+  const skin = std(o.skin, { roughness: 0.6 }), shirt = std(o.shirt), pants = std(o.pants, { roughness: 0.95 });
+  const hair = std(o.hair, { roughness: 0.65 }), shoe = o.shoes ? std(o.shoes, { roughness: 0.5 }) : skin;
+
+  const group = new THREE.Group();
+  const rig = joint(group);                  // moves the whole body up and down
+  const hips = joint(rig, 0, D.hip, 0);
+  part(hips, sph(D.waist * 1.05, 20), pants, 0, 0.01, 0, 1, 0.78, 0.8);   // seat of the pants
+
+  // Torso: a rounded shirt shape spun on the lathe, then squashed front to back.
+  const torso = joint(hips);
+  const T = D.torso, W = D.waist, C = D.chest;
+  const body = part(torso, lathe([[W * 0.92, -0.04], [W, 0.05], [W * 1.02, T * 0.35], [C, T * 0.68], [C * 0.98, T * 0.86], [C * 0.75, T * 0.97], [D.rArm, T + 0.015], [0, T + 0.02]]), shirt);
+  body.scale.z = 0.74;
+  if (o.dress) part(torso, lathe([[W * 1.02, 0.05], [W * 1.5, -0.25], [W * 2.2, -0.62], [0, -0.62]]), shirt);  // the skirt
+  part(torso, new THREE.CylinderGeometry(D.rArm * 0.95, D.rArm * 1.05, D.neck + 0.04, 12), skin, 0, T + D.neck / 2, 0);
+
+  // Head.
+  const H = D.head;
+  const head = joint(torso, 0, T + D.neck + H * 0.85, 0);
+  part(head, sph(H, 32), skin, 0, 0, 0, 0.92, 1, 1);
+  part(head, sph(H * 0.78, 24), skin, 0, -H * 0.32, -H * 0.18, 0.86, 0.82, 0.9);      // cheeks and chin
+  for (const s of [-1, 1]) part(head, sph(H * 0.22, 12), skin, s * H * 0.9, -H * 0.05, 0.02, 0.45, 1, 0.75);  // ears
+  part(head, sph(H * 0.14, 14), skin, 0, -H * 0.14, -H * 0.98, 0.85, 1, 1);             // nose
+  for (const s of [-1, 1]) {
+    addEye(head, s * H * 0.35, H * 0.06, -H * 0.82, H * 0.19, o.eyes);
+    const brow = part(head, new THREE.CylinderGeometry(H * 0.035, H * 0.035, H * 0.34, 8), std(o.hair, { roughness: 0.9 }), s * H * 0.36, H * 0.34, -H * 0.86);
+    brow.rotation.z = Math.PI / 2 + s * 0.15;
+  }
+  const mouth = part(head, new THREE.TorusGeometry(H * 0.2, H * 0.032, 8, 16, Math.PI), std(0x9a3a3a, { roughness: 0.5 }), 0, -H * 0.42, -H * 0.83);
+  mouth.rotation.z = Math.PI;   // the bottom half of a ring: a smile
+  for (const s of [-1, 1]) part(head, sph(H * 0.16, 12), std(0xf0a0a0, { roughness: 0.7, transparent: true, opacity: 0.45 }), s * H * 0.55, -H * 0.3, -H * 0.66, 1, 0.7, 0.4);  // rosy cheeks
+
+  // Hair: a cap over the top and back of the head...
+  const cap = part(head, lumpy(new THREE.SphereGeometry(H * 1.07, 32, 20, 0, Math.PI * 2, 0, Math.PI * (o.adult ? 0.5 : 0.58)), H * 0.06, 3, 14), hair, 0, H * 0.04, 0, 0.95, 1, 1);
+  cap.rotation.x = 0.38;   // tilted back, so it covers the back of the head and leaves the face clear
+  if (!o.adult) {
+    // ...plus tousled tufts, because Walter is a wild one.
+    for (const th of [0.25, 0.7, 1.1]) {
+      for (let ph = 0; ph < Math.PI * 2; ph += 0.95) {
+        const dir = new THREE.Vector3(Math.sin(th) * Math.sin(ph), Math.cos(th), Math.sin(th) * Math.cos(ph));
+        if (dir.z < -0.25 && th > 0.6) continue;   // keep the face uncovered
+        const tuft = part(head, lumpy(sph(H * 0.32, 12), H * 0.08, th * 3 + ph, 20), hair, dir.x * H * 0.98, dir.y * H * 0.98 + H * 0.05, dir.z * H * 0.98, 1, 0.55, 1.35);
+        tuft.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);   // lie flat on the scalp
+      }
+    }
+  }
+  if (o.longHair) part(head, limbGeo(H * 0.85, H * 0.6, H * 2.3), hair, 0, -H * 0.1, H * 0.45, 1.15, 1, 0.6);
+  if (o.beard) part(head, sph(H * 0.8, 20), hair, 0, -H * 0.45, -H * 0.2, 0.9, 0.7, 0.85);
+
+  // Arms: shoulder, then elbow, then hand. Walter's sleeves are short.
+  const arms = [-1, 1].map((s) => {
+    const shoulder = joint(torso, s * (C + D.rArm * 0.5), T * 0.88, 0);
+    part(shoulder, sph(D.rArm * 1.45, 14), shirt);
+    part(shoulder, limbGeo(D.rArm * 1.1, D.rArm, D.upper), o.adult ? shirt : skin);
+    if (!o.adult) part(shoulder, limbGeo(D.rArm * 1.45, D.rArm * 1.35, D.upper * 0.45), shirt);
+    const elbow = joint(shoulder, 0, -D.upper, 0);
+    part(elbow, limbGeo(D.rArm * 0.95, D.rArm * 0.78, D.fore), o.adult ? shirt : skin);
+    part(elbow, sph(D.rArm * 1.15, 12), skin, 0, -D.fore - D.rArm * 0.7, 0, 0.75, 1.15, 0.95);   // hand
+    part(elbow, sph(D.rArm * 0.45, 10), skin, s * -D.rArm * 0.6, -D.fore - D.rArm * 0.4, -D.rArm * 0.5);  // thumb
+    return { shoulder, elbow };
+  });
+
+  // Legs: hip, then knee, then ankle. Walter is barefoot, with little toes.
+  const legs = [-1, 1].map((s) => {
+    const hip = joint(hips, s * W * 0.52, -0.02, 0);
+    part(hip, limbGeo(D.rLeg * 1.2, D.rLeg * 0.95, D.thigh), o.dress ? skin : pants);
+    const knee = joint(hip, 0, -D.thigh, 0);
+    part(knee, limbGeo(D.rLeg * 0.9, D.rLeg * 0.68, D.shin), o.dress ? skin : pants);
+    const ankle = joint(knee, 0, -D.shin, 0);
+    part(ankle, sph(D.rLeg * 0.95, 16), shoe, 0, -D.rLeg * 0.3, -D.rLeg * 0.75, 0.85, 0.55, 1.9);
+    if (!o.shoes) for (let k = 0; k < 5; k++) part(ankle, sph(D.rLeg * 0.2, 8), skin, (k - 2) * D.rLeg * 0.27 * -s * -1, -D.rLeg * 0.42, -D.rLeg * 2.35 + Math.abs(k - 1.2) * D.rLeg * 0.08);
+    return { hip, knee, ankle };
+  });
+
+  return { group: shadows(group), rig, hips, torso, head, arms, legs };
+}
+
+// --- Polly the nuthatch: blue-gray back, white face and chest, black cap.
+// Drawn much bigger than a real nuthatch so she's easy to spot.
+function makePolly() {
+  const group = new THREE.Group();
+  const blue = std(0x6f85a3, { roughness: 0.7 }), white = std(0xf4f1ea, { roughness: 0.7 }), black = std(0x1d1d22, { roughness: 0.5 });
+  part(group, sph(0.24, 24), blue, 0, 0, 0, 1, 0.85, 1.5);
+  part(group, sph(0.21, 24), white, 0, -0.06, -0.06, 0.92, 0.78, 1.3);
+  part(group, sph(0.17, 24), white, 0, 0.12, -0.36);
+  part(group, sph(0.176, 24), black, 0, 0.18, -0.34, 1, 0.5, 1.05);
+  for (const s of [-1, 1]) {
+    part(group, sph(0.06, 12), black, s * 0.12, 0.13, -0.42, 0.4, 0.45, 1.6);   // the black stripe through the eye
+    part(group, sph(0.025, 10), std(0x050505, { roughness: 0.2 }), s * 0.135, 0.14, -0.45);
+  }
+  const beak = part(group, new THREE.ConeGeometry(0.035, 0.22, 12), std(0x3a3a3a, { roughness: 0.4 }), 0, 0.1, -0.58);
+  beak.rotation.x = -Math.PI / 2;
+  part(group, sph(0.12, 16), blue, 0, 0.03, 0.42, 0.9, 0.25, 1.4);   // tail
+  const wings = [-1, 1].map((s) => {
+    const pivot = joint(group, s * 0.18, 0.08, 0);
+    part(pivot, sph(0.22, 20), std(0x5a6f8c, { roughness: 0.7 }), s * 0.22, 0, 0.02, 1.35, 0.14, 1.05);
+    return pivot;
+  });
+  group.scale.setScalar(2.1);
+  return { group: shadows(group), wings };
+}
+
+// --- The Great Wolf Owl: big, gray-brown, with ear tufts and fierce
+// yellow eyes that glow a little in the evening light.
+function makeOwl() {
+  const group = new THREE.Group();
+  const fur = std(0x6f6a62, { roughness: 0.95 }), pale = std(0xcfc6b4, { roughness: 0.95 }), dark = std(0x3f3b36, { roughness: 0.95 });
+  part(group, lathe([[0.01, -0.5], [0.3, -0.42], [0.45, -0.1], [0.44, 0.15], [0.34, 0.42], [0.01, 0.52]]), fur);
+  part(group, sph(0.33, 20), pale, 0, -0.05, -0.2, 1, 1.15, 0.5);   // pale chest
+  const head = joint(group, 0, 0.62, 0);
+  part(head, sph(0.36, 28), fur, 0, 0, 0, 1.1, 0.95, 1);
+  part(head, sph(0.3, 24), pale, 0, -0.02, -0.24, 1.05, 0.9, 0.35);   // the round face
+  for (const s of [-1, 1]) {
+    part(head, sph(0.1, 16), std(0xffc21a, { emissive: 0x6a4a00, roughness: 0.25 }), s * 0.13, 0.04, -0.33, 1, 1, 0.6);
+    part(head, sph(0.05, 12), std(0x050505, { roughness: 0.2 }), s * 0.13, 0.04, -0.39, 1, 1, 0.5);
+    part(head, sph(0.016, 8), new THREE.MeshBasicMaterial({ color: 0xffffff }), s * 0.13 + 0.02, 0.07, -0.41);
+    const brow = part(head, sph(0.12, 14), dark, s * 0.14, 0.14, -0.3, 1.2, 0.3, 0.5);   // a frowning brow
+    brow.rotation.z = s * 0.35;
+    const tuft = part(head, new THREE.ConeGeometry(0.08, 0.3, 12), fur, s * 0.24, 0.36, -0.02);   // ear tufts
+    tuft.rotation.z = -s * 0.35;
+  }
+  const beak = part(head, new THREE.ConeGeometry(0.045, 0.14, 12), std(0x5a4a2a, { roughness: 0.4 }), 0, -0.08, -0.36);
+  beak.rotation.x = Math.PI * 0.62;
+  const wings = [-1, 1].map((s) => {
+    const pivot = joint(group, s * 0.36, 0.22, 0.02);
+    part(pivot, sph(0.5, 24), fur, s * 0.75, 0, 0.05, 1.6, 0.2, 0.75);
+    part(pivot, sph(0.4, 20), dark, s * 1.45, 0, 0.12, 1.3, 0.15, 0.6);   // the long feathers at the tips
+    return pivot;
+  });
+  part(group, sph(0.25, 16), dark, 0, -0.38, 0.4, 0.9, 0.18, 1.2);       // tail
+  for (const s of [-1, 1]) part(group, sph(0.07, 10), std(0x2a2620), s * 0.14, -0.52, -0.08, 1, 0.6, 1.4);  // talons
+  group.scale.setScalar(2.1);
+  // Turn first (Y), then tip forward (X), so the dive tips him nose-down
+  // whichever way the trail runs, instead of rolling him sideways.
+  group.rotation.order = "YXZ";
+  return { group: shadows(group), wings, head };
+}
+
+// --- Major, the Great Bear: big and round and dark, standing on his hind
+// legs, with the seven stars of the Big Dipper glowing in his fur.
+function makeMajor() {
+  const group = new THREE.Group();
+  const fur = std(0x3e2a1c, { roughness: 1 }), muzzle = std(0xb08a64, { roughness: 0.95 });
+  part(group, lumpy(lathe([[0.01, 0.55], [0.72, 0.72], [0.98, 1.25], [0.92, 1.85], [0.72, 2.3], [0.42, 2.6], [0.01, 2.72]], 28), 0.05, 2, 3), fur).scale.z = 0.86;
+  part(group, sph(0.52, 24), std(0x5a3e2a, { roughness: 1 }), 0, 1.55, -0.52, 1, 1.25, 0.45);    // lighter belly
+  const head = joint(group, 0, 2.98, -0.05);
+  part(head, lumpy(sph(0.52, 28), 0.03, 4, 6), fur, 0, 0, 0, 1, 0.95, 1);
+  part(head, sph(0.25, 20), muzzle, 0, -0.1, -0.44, 0.95, 0.78, 1.05);
+  part(head, sph(0.085, 14), std(0x111111, { roughness: 0.25 }), 0, -0.03, -0.69, 1.2, 0.8, 0.9);   // nose
+  for (const s of [-1, 1]) {
+    part(head, sph(0.06, 12), std(0x0a0a0a, { roughness: 0.2 }), s * 0.19, 0.12, -0.44);
+    part(head, sph(0.017, 8), new THREE.MeshBasicMaterial({ color: 0xffffff }), s * 0.19 + 0.02, 0.14, -0.49);
+    part(head, sph(0.17, 16), fur, s * 0.36, 0.38, 0.02, 1, 1, 0.55);           // ears
+    part(head, sph(0.1, 12), muzzle, s * 0.36, 0.38, -0.06, 1, 1, 0.4);
+  }
+  const arms = [-1, 1].map((s) => {
+    const shoulder = joint(group, s * 0.8, 2.25, -0.05);
+    shoulder.rotation.z = s * 0.25;
+    part(shoulder, limbGeo(0.25, 0.21, 0.6), fur);
+    const elbow = joint(shoulder, 0, -0.6, 0);
+    elbow.rotation.x = 0.3;
+    part(elbow, limbGeo(0.21, 0.19, 0.45), fur);
+    part(elbow, sph(0.23, 16), fur, 0, -0.55, 0, 1, 0.9, 1);
+    return { shoulder, elbow };
+  });
+  for (const s of [-1, 1]) {
+    const hip = joint(group, s * 0.42, 0.78, 0);
+    part(hip, limbGeo(0.32, 0.27, 0.48), fur);
+    part(hip, sph(0.28, 16), fur, 0, -0.62, -0.18, 0.95, 0.5, 1.45);   // big flat feet
+  }
+  // The Big Dipper, in stardust on his front.
+  const dust = new THREE.MeshBasicMaterial({ color: 0xcff4ff });
+  for (const [x, y] of [[-0.55, 2.3], [-0.25, 2.15], [0.05, 2.05], [0.3, 1.8], [0.35, 1.4], [0.7, 1.35], [0.7, 1.75]]) {
+    part(group, sph(0.055, 10), dust, x, y, -0.83 + Math.abs(x) * 0.12);
+  }
+  group.scale.setScalar(1.3);
+  return { group: shadows(group), arms, head };
+}
+
+// --- Four-legged animals: the coyote and the little black cat.
+// Each leg has a hip and a knee. The tail is a chain of joints so it can curl.
+function makeAnimal(o) {
+  const group = new THREE.Group();
+  const fur = std(o.fur, { roughness: 0.95 }), belly = std(o.belly || o.fur, { roughness: 0.95 });
+  const R = o.bodyR, Lb = o.bodyLen;
+  const body = joint(group, 0, o.legLen + R * 0.55, 0);
+  // The body is a pill lying on its side: chest at the front (-z), a bit bigger.
+  part(body, lumpy(capsule(R * 0.85, R * 1.05, Lb, 18).rotateX(-Math.PI / 2).translate(0, 0, Lb / 2), R * 0.05, 3, 6), fur, 0, 0, 0, 0.9, 1.12, 1);
+  if (o.belly) part(body, sph(R * 0.85, 18), belly, 0, -R * 0.4, -Lb * 0.15, 0.8, 0.6, 1.7);
+  // Neck and head: the head sits up and forward, on a neck that rises from the chest.
+  const head = joint(body, 0, R * 1.35, -Lb / 2 - R * 0.6);
+  part(body, limbGeo(R * 0.55, R * 0.62, R * 1.2), fur, 0, R * 1.3, -Lb / 2 - R * 0.55).rotation.x = -0.55;
+  const Hr = o.headR;
+  part(head, sph(Hr, 24), fur, 0, 0, 0, 1, 0.92, 1.05);
+  const snout = part(head, capsule(Hr * 0.17, Hr * 0.45, o.snout, 16), std(o.muzzle || o.fur, { roughness: 0.95 }), 0, -Hr * 0.2, -Hr * 0.5);
+  snout.rotation.x = -Math.PI / 2;
+  part(head, sph(Hr * 0.13, 12), std(0x111111, { roughness: 0.25 }), 0, -Hr * 0.14, -Hr * 0.5 - o.snout - Hr * 0.15);   // nose
+  for (const s of [-1, 1]) {
+    part(head, sph(Hr * 0.17, 12), std(o.eye, { emissive: o.eye, emissiveIntensity: 0.35, roughness: 0.2 }), s * Hr * 0.4, Hr * 0.15, -Hr * 0.78, 1, 1, 0.6);
+    part(head, sph(Hr * 0.08, 10), std(0x050505, { roughness: 0.2 }), s * Hr * 0.42, Hr * 0.15, -Hr * 0.88, 0.7, 1.2, 0.5);
+    const ear = part(head, new THREE.ConeGeometry(Hr * 0.45, o.earH, 16), fur, s * Hr * 0.5, Hr * 0.8, Hr * 0.05, 1, 1, 0.45);
+    ear.rotation.z = -s * 0.3;
+  }
+  // Legs.
+  const legs = [[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([s, f]) => {
+    const hip = joint(body, s * R * 0.42, -R * 0.25, f * Lb * 0.45);
+    part(hip, limbGeo(o.legR * 1.35, o.legR, o.legLen * 0.52), fur);
+    const knee = joint(hip, 0, -o.legLen * 0.52, 0);
+    part(knee, limbGeo(o.legR, o.legR * 0.8, o.legLen * 0.48), fur);
+    part(knee, sph(o.legR * 1.25, 12), fur, 0, -o.legLen * 0.5, -o.legR * 0.6, 1, 0.6, 1.5);   // paw
+    return { hip, knee };
+  });
+  // Tail: three joints in a chain.
+  const tail = [];
+  let link = joint(body, 0, R * 0.35, Lb / 2 + R * 0.6);
+  for (let k = 0; k < 3; k++) {
+    const seg = o.bushy ? R * 0.5 : R * 0.42;
+    const r = o.bushy ? R * (0.32 + k * 0.08) : R * 0.16;
+    part(link, limbGeo(r, o.bushy ? r * 1.05 : r * 0.9, seg), k === 2 && o.tailTip ? std(o.tailTip, { roughness: 0.95 }) : fur);
+    tail.push(link);
+    link = joint(link, 0, -seg, 0);
+  }
+  tail[0].rotation.x = o.tailUp ? -2.5 : -0.9;   // negative swings it backward, away from the head
+  if (o.tailUp) tail[1].rotation.x = 0.5;        // the cat's tail curls over at the top
+  group.scale.setScalar(o.size);
+  return { group: shadows(group), legs, tail, head, body };
+}
+
+// Walter: orange shirt, blue pants, blond hair, blue eyes, bare feet.
+const walter = makePerson({ skin: 0xf3cba6, shirt: 0xd9603b, pants: 0x3b5ba8, hair: 0xcf9a35, eyes: 0x3fa9f5 });
+walter.group.scale.setScalar(1.25);
+scene.add(walter.group);
+const blob = new THREE.Mesh(GEO.flat, new THREE.MeshBasicMaterial({ map: blobTex, transparent: true, depthWrite: false }));
+scene.add(blob);
+
+// The characters who make cameo appearances. They wait hidden until needed.
+const CAST = {
+  polly: makePolly(),
+  owl: makeOwl(),
+  major: makeMajor(),
+  coyote: makeAnimal({ fur: 0x9c8460, belly: 0xe0d2b4, muzzle: 0xb39a74, tailTip: 0x3a3028, eye: 0xffd23a, size: 1.25, bodyR: 0.25, bodyLen: 0.62, legLen: 0.6, legR: 0.07, headR: 0.2, snout: 0.26, earH: 0.3, bushy: true }),
+  cat: makeAnimal({ fur: 0x1c1c22, eye: 0x8aff6a, size: 0.62, bodyR: 0.22, bodyLen: 0.5, legLen: 0.42, legR: 0.06, headR: 0.23, snout: 0.04, earH: 0.22, tailUp: true }),
+};
+for (const who in CAST) { CAST[who].group.visible = false; scene.add(CAST[who].group); }
+
+// Everything about Walter's run. Logic uses seg/s/lat/y. The view position
+// and angle trail slightly behind, so corners and lane hops look smooth.
+const w = {};
+function resetWalter() {
+  Object.assign(w, {
+    seg: 0, s: 0, lane: 0, lat: 0, y: 0, vy: 0,
+    speed: SPEED_START, duckT: 0, stumbleT: 0, safeT: 0, turnQueued: false, phase: 0, lastStep: 0,
+    viewPos: new THREE.Vector3(0, 0, 0), viewAng: 0,
+  });
+}
+
+// ---------------------------------------------------------------------
+// 6. EFFECTS: sparkle bursts and drifting fireflies.
+// Both are "points": lots of little glowing dots drawn in one step.
+// ---------------------------------------------------------------------
+const SPARKS = 300;
+const sparkPos = new Float32Array(SPARKS * 3).fill(-100);
+const sparkCol = new Float32Array(SPARKS * 3);
+const sparks = Array.from({ length: SPARKS }, () => ({ life: 0, vx: 0, vy: 0, vz: 0, r: 0, g: 0, b: 0 }));
+const sparkGeo = new THREE.BufferGeometry();
+sparkGeo.setAttribute("position", new THREE.BufferAttribute(sparkPos, 3));
+sparkGeo.setAttribute("color", new THREE.BufferAttribute(sparkCol, 3));
+const sparkPoints = new THREE.Points(sparkGeo, new THREE.PointsMaterial({
+  size: 0.32, map: glowTex, vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+}));
+sparkPoints.frustumCulled = false;
+scene.add(sparkPoints);
+let sparkNext = 0;
+
+// Throw n sparks out from a point, in a color.
+function burst(x, y, z, color, n = 14) {
+  const c = new THREE.Color(color);
+  for (let k = 0; k < n; k++) {
+    const i = sparkNext;
+    sparkNext = (sparkNext + 1) % SPARKS;   // reuse the oldest spark
+    const a = Math.random() * Math.PI * 2, up = Math.random();
+    Object.assign(sparks[i], { life: 0.6 + Math.random() * 0.3, vx: Math.cos(a) * 3, vy: 1.5 + up * 3.5, vz: Math.sin(a) * 3, r: c.r, g: c.g, b: c.b });
+    sparkPos.set([x, y, z], i * 3);
+  }
+}
+function updateSparks(dt) {
+  sparks.forEach((p, k) => {
+    if (p.life <= 0) { sparkCol[k * 3] = sparkCol[k * 3 + 1] = sparkCol[k * 3 + 2] = 0; return; }
+    p.life -= dt;
+    p.vy -= 6 * dt;
+    sparkPos[k * 3] += p.vx * dt; sparkPos[k * 3 + 1] += p.vy * dt; sparkPos[k * 3 + 2] += p.vz * dt;
+    const fade = Math.max(0, Math.min(1, p.life * 2));   // fading to black = invisible, with additive glow
+    sparkCol[k * 3] = p.r * fade; sparkCol[k * 3 + 1] = p.g * fade; sparkCol[k * 3 + 2] = p.b * fade;
+  });
+  sparkGeo.attributes.position.needsUpdate = true;
+  sparkGeo.attributes.color.needsUpdate = true;
+}
+
+// Fireflies float around Walter. When one falls too far behind, it is
+// moved ahead again, so there are always some near him.
+const FLIES = 140, FLY_BOX = 30;
+const flyPos = new Float32Array(FLIES * 3);
+const flyBase = [];
+for (let k = 0; k < FLIES; k++) {
+  flyBase.push({ x: (Math.random() - 0.5) * FLY_BOX * 2, y: 0.6 + Math.random() * 4, z: (Math.random() - 0.5) * FLY_BOX * 2, ph: Math.random() * 6 });
+}
+const flyGeo = new THREE.BufferGeometry();
+flyGeo.setAttribute("position", new THREE.BufferAttribute(flyPos, 3));
+const flies = new THREE.Points(flyGeo, new THREE.PointsMaterial({
+  size: 0.26, map: glowTex, color: 0xfff2a0, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+}));
+flies.frustumCulled = false;
+scene.add(flies);
+function updateFlies(t) {
+  flyBase.forEach((f, k) => {
+    // Wrap each firefly into the box around Walter.
+    while (f.x - w.viewPos.x > FLY_BOX) f.x -= FLY_BOX * 2;
+    while (f.x - w.viewPos.x < -FLY_BOX) f.x += FLY_BOX * 2;
+    while (f.z - w.viewPos.z > FLY_BOX) f.z -= FLY_BOX * 2;
+    while (f.z - w.viewPos.z < -FLY_BOX) f.z += FLY_BOX * 2;
+    flyPos[k * 3] = f.x + Math.sin(t * 0.7 + f.ph) * 0.8;
+    flyPos[k * 3 + 1] = f.y + Math.sin(t * 1.3 + f.ph * 2) * 0.4;
+    flyPos[k * 3 + 2] = f.z + Math.cos(t * 0.6 + f.ph) * 0.8;
+  });
+  flyGeo.attributes.position.needsUpdate = true;
+  flies.material.opacity = 0.55 + Math.sin(t * 3) * 0.25;
+}
+
+// ---------------------------------------------------------------------
+// 7. SOUND AND MUSIC
+// Every sound is an oscillator (a pure tone) or a burst of noise, shaped by
+// a volume envelope. Sound effects and music each have their own volume
+// knob (a "gain" node), and both feed one master knob.
+// ---------------------------------------------------------------------
+let actx = null, master = null, sfxBus = null, musicBus = null, noiseBuf = null;
+function initAudio() {
+  if (actx) return;
+  try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return; }
+  master = actx.createGain(); master.connect(actx.destination);
+  sfxBus = actx.createGain(); sfxBus.connect(master);
+  musicBus = actx.createGain(); musicBus.connect(master);
+  noiseBuf = actx.createBuffer(1, actx.sampleRate, actx.sampleRate);
+  const d = noiseBuf.getChannelData(0);
+  for (let k = 0; k < d.length; k++) d[k] = Math.random() * 2 - 1;
+  applyVolume();
+  startMusic();
+}
+function applyVolume() {
+  if (!actx) return;
+  master.gain.value = game.soundOn ? 1 : 0;
+  musicBus.gain.value = game.musicOn ? 0.6 : 0;
+}
+
+// A tone that glides through a list of pitches over its length.
+function tone(t, freqs, dur, type = "sine", vol = 0.12, bus = sfxBus) {
+  const o = actx.createOscillator(), v = actx.createGain();
+  o.type = type;
+  o.frequency.setValueAtTime(freqs[0], t);
+  freqs.slice(1).forEach((f, k) => o.frequency.exponentialRampToValueAtTime(f, t + dur * (k + 1) / (freqs.length - 1)));
+  v.gain.setValueAtTime(0.0001, t);
+  v.gain.exponentialRampToValueAtTime(vol, t + 0.012);
+  v.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(v).connect(bus);
+  o.start(t); o.stop(t + dur + 0.05);
+}
+// A burst of filtered noise: footsteps, splashes, whooshes, shakers.
+function hiss(t, dur, vol, freq, filter = "bandpass", bus = sfxBus) {
+  const src = actx.createBufferSource(), f = actx.createBiquadFilter(), v = actx.createGain();
+  src.buffer = noiseBuf;
+  f.type = filter; f.frequency.value = freq;
+  v.gain.setValueAtTime(vol, t);
+  v.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  src.connect(f).connect(v).connect(bus);
+  src.start(t, Math.random() * 0.4); src.stop(t + dur + 0.05);
+}
+function sfx(name, arg) {
+  if (!actx) return;
+  SFX[name](actx.currentTime, arg);
+}
+const SFX = {
+  // Each track in a row rings a step higher, up a scale.
+  track: (t, combo) => tone(t, [880 * Math.pow(2, [0, 2, 4, 7, 9, 12, 14, 16][Math.min(combo, 7)] / 12)], 0.12, "sine", 0.07),
+  star: (t) => [1047, 1319, 1568, 2093].forEach((f, k) => tone(t + k * 0.06, [f], 0.25, "triangle", 0.07)),
+  jump: (t) => { tone(t, [260, 560], 0.16, "triangle", 0.08); hiss(t, 0.12, 0.05, 1600); },
+  land: (t) => hiss(t, 0.09, 0.14, 380, "lowpass"),
+  duck: (t) => { tone(t, [420, 200], 0.14, "triangle", 0.06); hiss(t, 0.15, 0.05, 900); },
+  lane: (t) => hiss(t, 0.13, 0.05, 2200),
+  step: (t) => hiss(t, 0.05, 0.05, 700, "lowpass"),
+  bump: (t) => { tone(t, [160, 55], 0.32, "triangle", 0.25); hiss(t, 0.2, 0.15, 500, "lowpass"); tone(t + 0.05, [520, 330], 0.2, "sine", 0.06); },
+  splash: (t) => { hiss(t, 0.5, 0.2, 1400); hiss(t + 0.05, 0.3, 0.1, 3000); },
+  turn: (t) => { tone(t, [520, 880], 0.14, "sine", 0.08); hiss(t, 0.25, 0.05, 1800); },
+  phew: (t) => [659, 784, 1047].forEach((f, k) => tone(t + k * 0.09, [f], 0.2, "triangle", 0.08)),
+  nope: (t) => { tone(t, [240, 180], 0.22, "square", 0.04); },
+  home: (t) => [523, 659, 784, 659, 784, 1047].forEach((f, k) => tone(t + k * 0.14, [f], k === 5 ? 0.7 : 0.22, "triangle", 0.1)),
+  // Polly's "whir-whir-whir" from the book: quick rising chirps.
+  whir: (t) => { for (let k = 0; k < 3; k++) tone(t + k * 0.13, [2200, 3400, 2600], 0.1, "sine", 0.05); },
+  // The owl: a deep "hoo-HOO", a screech for the dive, and the whoosh of wings.
+  hoot: (t) => { tone(t, [300, 285], 0.35, "sine", 0.14); tone(t + 0.45, [345, 330, 290], 0.6, "sine", 0.16); },
+  screech: (t) => { tone(t, [1900, 2300, 1300], 0.6, "sawtooth", 0.035); hiss(t, 0.6, 0.06, 3200); },
+  swoosh: (t) => { hiss(t, 0.5, 0.18, 900); hiss(t + 0.1, 0.4, 0.1, 400, "lowpass"); },
+  howl: (t) => { tone(t, [330, 520, 610, 560, 420], 1.6, "sine", 0.08); tone(t, [332, 524, 614, 562, 422], 1.6, "triangle", 0.03); },
+  growl: (t) => { tone(t, [95, 80, 90, 75], 0.55, "sawtooth", 0.05); hiss(t, 0.5, 0.06, 200, "lowpass"); },
+  meow: (t) => tone(t, [620, 900, 760, 520], 0.55, "triangle", 0.07),
+  // Major hums three low notes.
+  hum: (t) => [196, 220, 247, 196].forEach((f, k) => tone(t + k * 0.32, [f], 0.38, "triangle", 0.09)),
+  bird: (t) => { const f = 2400 + Math.random() * 1400; tone(t, [f, f * 1.25], 0.07, "sine", 0.025); tone(t + 0.1, [f * 1.1, f * 0.9], 0.08, "sine", 0.025); },
+};
+
+// The music: an original tune in E minor, which sounds more mysterious than
+// a major key. Under it: a pulsing bass like a heartbeat in a hurry, a soft
+// ticking, and chords that hum on every beat. The chords go E minor, C, A
+// minor, then B major, which pulls hard back to the start: that "unfinished"
+// feeling is what makes music sound suspenseful.
+// Numbers are MIDI notes (60 is middle C, +1 is a half step); null is a rest.
+const BPM = 104;
+const STEP = 60 / BPM / 2;          // each step is an eighth note
+const MELODY = [
+  [71, null, null, null, 72, null, 71, null],
+  [67, null, null, null, null, null, 64, null],
+  [69, null, 72, null, 71, null, 69, null],
+  [66, null, null, null, 63, null, null, null],
+  [76, null, null, null, 75, null, 76, null],
+  [79, null, null, null, 76, null, 72, null],
+  [72, null, 71, null, 69, null, 67, null],
+  [66, null, null, 63, 66, null, 71, null],
+];
+const ROOTS = [40, 36, 33, 35];    // E, C, A, B (low)
+const CHORDS = [[64, 67, 71], [64, 67, 72], [64, 69, 72], [63, 66, 71]];
+const midi = (m) => 440 * Math.pow(2, (m - 69) / 12);
+const music = { step: 0, loop: 0, next: 0, timer: null };
+
+function startMusic() {
+  if (!actx || music.timer) return;
+  music.next = actx.currentTime + 0.1;
+  // A little scheduler: every 50ms, queue any notes due in the next 0.2s.
+  // Audio timing is exact even when the screen stutters.
+  music.timer = setInterval(() => {
+    while (music.next < actx.currentTime + 0.2) {
+      playStep(music.step, music.next);
+      music.step = (music.step + 1) % 64;
+      if (music.step === 0) music.loop++;
+      music.next += STEP;
+    }
+  }, 50);
+}
+function playStep(i, t) {
+  const bar = Math.floor(i / 8), e = i % 8, chord = bar % 4;
+  const note = MELODY[bar][e];
+  if (note) {
+    tone(t, [midi(note)], STEP * 3.2, "triangle", 0.05, musicBus);
+    tone(t, [midi(note - 12)], STEP * 3.2, "sine", 0.025, musicBus);   // a darker echo an octave down
+  }
+  // Pulsing bass on every eighth, louder on the beat.
+  tone(t, [midi(ROOTS[chord] + (e === 6 ? 7 : 0))], STEP * 0.9, "triangle", e % 2 ? 0.07 : 0.13, musicBus);
+  // Hushed chords, re-struck on each beat like a nervous tremble.
+  if (e % 2 === 0) for (const m of CHORDS[chord]) tone(t, [midi(m)], STEP * 1.9, "sine", 0.013, musicBus);
+  hiss(t, 0.03, e % 2 ? 0.012 : 0.02, 8000, "highpass", musicBus);     // the ticking
+  if (e === 0) { tone(t, [70, 42], 0.22, "sine", 0.22, musicBus); }     // heartbeat: lub...
+  if (e === 1) { tone(t, [62, 40], 0.18, "sine", 0.14, musicBus); }     // ...dub
+  if (music.loop % 2 === 1 && e === 4 && bar % 2 === 1) tone(t, [midi(83)], STEP * 6, "sine", 0.015, musicBus);  // a high, lonely bell
+  if (game.chase) {
+    // Drums join in while the coyote is chasing.
+    if (e % 2 === 0) tone(t, [130, 55], 0.18, "sine", 0.2, musicBus);
+    if (e === 3 || e === 7) hiss(t, 0.1, 0.07, 1500, "bandpass", musicBus);
+  }
+}
+
+// ---------------------------------------------------------------------
+// 8. CAMEOS
+// At points along the route, someone from the book drops in for a few
+// seconds. Each one has a start(), an update() that returns false when the
+// scene is over, and an end(). They appear in the book's order.
+// ---------------------------------------------------------------------
+const WHO = {
+  polly: ["🐦", "Polly"], owl: ["🦉", "The Great Wolf Owl"], major: ["🐻", "Major"],
+  coyote: ["🐺", "Coyote"], cat: ["🐈", "The cat"], walter: ["🧒", "Walter"],
+};
+const CAMEOS = [
+  { at: 0.05, who: "polly", line: "Whir-whir-whir! Hello, Walter! Follow the glowing bear tracks. They'll lead you home." },
+  { at: 0.17, who: "owl", line: "Hoo-HOO! Who is running through MY woods?" },
+  { at: 0.3, who: "major", line: "Hmm-hmm-hmm. There you are, little one! Here are some stars for your journey." },
+  { at: 0.5, who: "coyote", line: "Grrr... what's a little pup doing all alone in the woods?" },
+  { at: 0.72, who: "cat", line: "Mrrow! (The little black cat trots ahead of Walter, showing him the way.)" },
+  { at: 0.9, who: "polly", line: "Whir-whir! I can see your house from up here! You're almost there!" },
+];
+let cameo = null, cameoNext = 0;
+
+let speechTimer = null;
+function speak(who, text, secs = 4) {
+  const el = $("speech");
+  el.innerHTML = "";
+  const name = document.createElement("b");
+  name.textContent = WHO[who][0] + " " + WHO[who][1] + ": ";
+  el.append(name, document.createTextNode(text));
+  el.style.opacity = 1;
+  clearTimeout(speechTimer);
+  speechTimer = setTimeout(() => (el.style.opacity = 0), secs * 1000);
+}
+
+// Put a character somewhere relative to Walter: fwd ahead of him, side to
+// his right (negative is left), up above the ground.
+function nearWalter(obj, fwd, side, up) {
+  const fx = -Math.sin(w.viewAng), fz = -Math.cos(w.viewAng);
+  obj.position.set(w.viewPos.x + fx * fwd - fz * side, up, w.viewPos.z + fz * fwd + fx * side);
+}
+const ease = (k) => { k = Math.max(0, Math.min(1, k)); return k * k * (3 - 2 * k); };
+const once = (c, key) => (c[key] ? false : (c[key] = true));
+// Four-legged running: diagonal legs move together, knees fold as they swing.
+// Front knees fold backward and back knees fold forward, like a real dog's.
+function runLegs(legs, t, rate, amount) {
+  legs.forEach((l, k) => {
+    const ph = t * rate + (k === 0 || k === 3 ? 0 : Math.PI);
+    l.hip.rotation.x = Math.sin(ph) * amount;
+    l.knee.rotation.x = (k < 2 ? -1 : 1) * Math.max(0, Math.cos(ph)) * amount * 1.2;
+  });
+}
+
+const ACTORS = {
+  polly: {
+    room: 30,
+    start() {},
+    update(c) {
+      const p = CAST.polly, t = c.t;
+      let fwd, up;
+      if (t < 1.3) { fwd = -8 + 10.5 * ease(t / 1.3); up = 5.5 - 2.5 * ease(t / 1.3); }   // swoop in
+      else if (t < 6) { fwd = 2.5 + Math.sin(t * 1.3) * 0.7; up = 3 + Math.sin(t * 3) * 0.3; }
+      else { fwd = 2.5 + 16 * ease((t - 6) / 1.5); up = 3 + 7 * ease((t - 6) / 1.5); }    // fly off
+      nearWalter(p.group, fwd, 2.1, up);
+      p.group.rotation.y = w.viewAng;
+      p.wings.forEach((wg, k) => (wg.rotation.z = (k ? -1 : 1) * Math.sin(t * 28) * 0.9));
+      if (t > 0.6 && once(c, "said")) { speak("polly", c.line); sfx("whir"); }
+      if (t > 3.2 && once(c, "chirp")) sfx("whir");
+      return t < 7.5;
+    },
+    end() {},
+  },
+  owl: {
+    // The owl watches from up ahead, then dives straight at Walter. Duck!
+    // Pressing Down any time after the warning keeps Walter crouched until
+    // the owl has passed, so little kids don't have to time it exactly.
+    room: 75,
+    start() {
+      // Clear the trail for the dive, so ducking is the only thing to think about.
+      for (const ob of route[w.seg].obstacles) {
+        if (ob.s > w.s + 3 && ob.s < w.s + 65) { ob.done = true; (ob.meshes || []).forEach((m) => (m.visible = false)); }
+      }
+    },
+    update(c) {
+      const o = CAST.owl, t = c.t;
+      let fwd, up, flap;
+      if (t < 2.2) { fwd = 30 - t * 1.5; up = 7 + Math.sin(t * 2.5) * 0.4; flap = Math.sin(t * 9) * 0.6; }   // hovering, watching
+      else if (t < 3.1) {
+        const k = (t - 2.2) / 0.9;                                    // the dive
+        fwd = (30 - 2.2 * 1.5) * (1 - k);
+        up = 7 - 5.4 * ease(k * 1.15);
+        flap = 0.45;                                                  // wings raised in a V, talons out
+      } else {
+        const k = (t - 3.1) / 1.2;                                    // past Walter, climbing away
+        fwd = -12 * k; up = 1.6 + 9 * ease(k); flap = Math.sin(t * 12) * 0.7;
+      }
+      nearWalter(o.group, fwd, 0, up);
+      o.group.rotation.y = w.viewAng + Math.PI;   // facing Walter
+      o.group.rotation.x = t > 2.2 && t < 3.1 ? 0.35 : 0;
+      o.wings.forEach((wg, k) => (wg.rotation.z = (k ? 1 : -1) * flap));   // positive flap = both wings up
+      o.head.rotation.y = t < 2.2 ? Math.sin(t * 1.7) * 0.5 : 0;   // looking around
+      if (t > 0.3 && once(c, "said")) { speak("owl", c.line, 3); sfx("hoot"); }
+      if (t > 1.4 && once(c, "warn")) { say("Duck! ↓", 1.6, true); sfx("screech"); }
+      if (t > 1.4 && w.duckT > 0) c.ducked = true;
+      if (c.ducked && !c.passed) w.duckT = Math.max(w.duckT, 0.15);
+      if (t > 2.95 && once(c, "passed")) {
+        sfx("swoosh");
+        if (c.ducked) { say("Phew! The owl missed!", 1.8); sfx("phew"); }
+        else bump("Whoosh! The owl swooped right at Walter! Duck with ↓");
+      }
+      return t < 4.3;
+    },
+    end() {},
+  },
+  major: {
+    room: 70,
+    start(c) {
+      // Major stands still beside the trail ahead, and Walter runs past him.
+      const seg = route[w.seg];
+      c.seg = w.seg; c.s = w.s + 50; c.side = rand() < 0.5 ? -1 : 1;
+      // Right at the trail's edge: any farther out and the trees hide him.
+      const p = worldXZ(seg, c.s, c.side * (TRAIL_HALF + 0.5));
+      CAST.major.group.position.set(p.x, 0, p.z);
+    },
+    update(c) {
+      const m = CAST.major, t = c.t;
+      // Always turn to face Walter.
+      const dx = w.viewPos.x - m.group.position.x, dz = w.viewPos.z - m.group.position.z;
+      m.group.rotation.y = Math.atan2(-dx, -dz);
+      // Wave the arm nearest the trail.
+      const arm = m.arms[c.side > 0 ? 0 : 1];
+      arm.shoulder.rotation.x = 2.7;
+      arm.elbow.rotation.z = Math.sin(t * 6) * 0.5;
+      m.head.rotation.z = Math.sin(t * 2) * 0.1;
+      const ahead = w.seg === c.seg ? c.s - w.s : -99;
+      if (ahead < 34 && once(c, "said")) {
+        speak("major", c.line); sfx("hum");
+        // Major's gift: a trail of stars down the middle lane.
+        const seg = route[c.seg];
+        for (let k = 0; k < 6; k++) addStar(seg, c.s - 18 + k * 2.2, 0, 1.0);
+        burst(m.group.position.x, 3, m.group.position.z, 0xcff4ff, 30);
+      }
+      if (Math.random() < 0.15) burst(m.group.position.x + (Math.random() - 0.5) * 2, 1 + Math.random() * 3, m.group.position.z, 0xcff4ff, 1);
+      return ahead > -12 && t < 15;
+    },
+    end() {
+      for (const a of CAST.major.arms) { a.shoulder.rotation.x = 0; a.elbow.rotation.z = 0; }
+    },
+  },
+  coyote: {
+    room: 40,
+    start() { game.chase = true; },
+    update(c) {
+      const k = CAST.coyote, t = c.t;
+      let fwd;
+      if (t < 1.5) fwd = -10 + 10.6 * ease(t / 1.5);           // races up from behind
+      else if (t < 7) fwd = 0.6 + Math.sin(t * 2.3) * 1.2;      // running alongside, snapping
+      else fwd = 0.6 - 18 * ease((t - 7) / 1.6);               // gives up
+      nearWalter(k.group, fwd, -(TRAIL_HALF - 0.3), Math.abs(Math.sin(t * 9)) * 0.12);
+      k.group.rotation.y = w.viewAng;
+      runLegs(k.legs, t, 18, 0.6);
+      k.body.rotation.x = Math.sin(t * 18) * 0.05;
+      k.head.rotation.y = 0.35 + Math.sin(t * 3) * 0.15;    // eyeing Walter
+      k.tail[0].rotation.x = -1.1 + Math.sin(t * 9) * 0.15;
+      if (t > 0.4 && once(c, "said")) { speak("coyote", c.line, 3); sfx("growl"); }
+      if (t > 3.2 && once(c, "run")) { speak("walter", "Run, Walter, run! Don't stop for anything!", 3); sfx("growl"); }
+      if (t > 7.2 && once(c, "howl")) { speak("coyote", "Ahh-ooooo! (The coyote gives up and slinks back into the woods.)", 3.5); sfx("howl"); game.chase = false; }
+      return t < 8.8;
+    },
+    end() { game.chase = false; },
+  },
+  cat: {
+    room: 40,
+    start() {},
+    update(c) {
+      const k = CAST.cat, t = c.t;
+      let side = TRAIL_HALF - 0.6, fwd = 5.5 + Math.sin(t * 0.9) * 0.6;
+      if (t < 1.2) side = 9 - (9 - side) * ease(t / 1.2);           // pops out of the woods
+      if (t > 6.8) side += 12 * ease((t - 6.8) / 1.2);              // darts back in
+      nearWalter(k.group, fwd, side, Math.abs(Math.sin(t * 10)) * 0.06);
+      k.group.rotation.y = w.viewAng + (t < 1.2 ? 0.8 : t > 6.8 ? -0.9 : 0);
+      runLegs(k.legs, t, 20, 0.75);
+      k.tail.forEach((link, i) => (link.rotation.z = Math.sin(t * 4 - i) * 0.25));
+      if (t > 0.8 && once(c, "said")) { speak("cat", c.line); sfx("meow"); }
+      if (t > 4.5 && once(c, "meow2")) sfx("meow");
+      return t < 8.2;
+    },
+    end() {},
+  },
+};
+
+function updateCameos(dt, progress) {
+  if (!cameo && cameoNext < CAMEOS.length && progress >= CAMEOS[cameoNext].at) {
+    const c = CAMEOS[cameoNext], seg = route[w.seg];
+    // Wait for a long enough stretch of straight trail.
+    if (seg.len - w.s > ACTORS[c.who].room) {
+      cameo = Object.assign({ t: 0 }, c);
+      cameoNext++;
+      CAST[c.who].group.visible = true;
+      ACTORS[c.who].start(cameo);
+    }
+  }
+  if (cameo) {
+    cameo.t += dt;
+    if (!ACTORS[cameo.who].update(cameo, dt)) stopCameo();
+  }
+}
+function stopCameo() {
+  if (!cameo) return;
+  ACTORS[cameo.who].end(cameo);
+  CAST[cameo.who].group.visible = false;
+  cameo = null;
+}
+
+// Add a star to a segment during the run (Major's gift).
+function addStar(seg, s, lat, y) {
+  const it = { kind: "star", s, lat, y, taken: false };
+  seg.items.push(it);
+  game.totalStars++;
+  if (seg.group) it.mesh = makeStar(seg.group, lat, y, -s);
+}
+
+// ---------------------------------------------------------------------
+// 9. CONTROLS
+// ---------------------------------------------------------------------
+const game = { state: "title", paused: false, soundOn: true, musicOn: true, chase: false,
+  tracks: 0, stars: 0, bumps: 0, totalTracks: 0, totalStars: 0, homeT: 0, combo: 0, comboT: 0, birdT: 3 };
+
+// Left or right: hop lanes, or turn if a corner is close.
+function steer(way) {
+  if (game.state !== "run") return;
+  const seg = route[w.seg];
+  if (seg.turn && seg.len - w.s < TURN_ZONE) {
+    if (w.turnQueued) return;
+    if (way === seg.turn) { w.turnQueued = true; sfx("turn"); }
+    else { say(seg.fork ? "Not that way, coyotes! Follow the glowing tracks." : "The trail turns the other way!"); sfx("nope"); }
+    return;
+  }
+  const lane = Math.max(-1, Math.min(1, w.lane + way));
+  if (lane !== w.lane) { w.lane = lane; sfx("lane"); }
+}
+function jump() {
+  if (game.state !== "run" || w.y > 0) return;
+  w.vy = JUMP_V; w.duckT = 0; sfx("jump");
+}
+function duck() {
+  if (game.state !== "run") return;
+  w.duckT = DUCK_TIME;
+  if (w.y > 0) w.vy = -14;   // ducking in the air drops Walter fast
+  sfx("duck");
+}
+
+addEventListener("keydown", (e) => {
+  const k = e.code;
+  if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Space"].includes(k)) e.preventDefault();
+  if (k === "KeyM") { game.soundOn = !game.soundOn; applyVolume(); say(game.soundOn ? "Sound on" : "Sound off"); return; }
+  if (k === "KeyN") { game.musicOn = !game.musicOn; applyVolume(); say(game.musicOn ? "Music on" : "Music off"); return; }
+  if (game.state === "title" || game.state === "end") {
+    if ((k === "Space" || k === "Enter") && !e.repeat) startRun();
+    return;
+  }
+  if (game.state !== "run") return;
+  if (k === "KeyP" || k === "Escape") { game.paused = !game.paused; say(game.paused ? "Paused (P to go)" : ""); return; }
+  if (game.paused || e.repeat) return;
+  if (k === "ArrowLeft" || k === "KeyA") steer(-1);
+  if (k === "ArrowRight" || k === "KeyD") steer(1);
+  if (k === "ArrowUp" || k === "KeyW" || k === "Space") jump();
+  if (k === "ArrowDown" || k === "KeyS") duck();
+});
+
+// Swipes, for tablets: the longer direction of the swipe wins. A tap jumps.
+let touch0 = null;
+renderer.domElement.addEventListener("touchstart", (e) => { touch0 = e.touches[0]; }, { passive: true });
+renderer.domElement.addEventListener("touchend", (e) => {
+  if (!touch0) return;
+  const t = e.changedTouches[0], dx = t.clientX - touch0.clientX, dy = t.clientY - touch0.clientY;
+  touch0 = null;
+  if (Math.max(Math.abs(dx), Math.abs(dy)) < 25) return jump();
+  if (Math.abs(dx) > Math.abs(dy)) steer(dx > 0 ? 1 : -1);
+  else if (dy < 0) jump(); else duck();
+});
+
+// ---------------------------------------------------------------------
+// SCREENS AND MESSAGES
+// ---------------------------------------------------------------------
+let msgTimer = null;
+function say(text, secs = 1.8, alarm = false) {
+  const el = $("msg");
+  el.textContent = text;
+  el.classList.toggle("alarm", alarm);
+  el.style.opacity = text ? 1 : 0;
+  clearTimeout(msgTimer);
+  if (text) msgTimer = setTimeout(() => (el.style.opacity = 0), secs * 1000);
+}
+
+function best() {
+  try { return JSON.parse(localStorage.getItem("walterRunBest")) || null; } catch (e) { return null; }
+}
+function saveBest(b) {
+  try { localStorage.setItem("walterRunBest", JSON.stringify(b)); } catch (e) { /* private window: skip */ }
+}
+
+function showTitle() {
+  $("card").style.display = "flex";
+  document.querySelector("#card .box").innerHTML = `
+    <h1>Walter the Wild</h1>
+    <p class="big">Run Home!</p>
+    <p>Major's stardust has made the bear tracks glow. Follow them through the woods to get home before dark.
+    Keep an eye out for old friends along the way... and watch the sky!</p>
+    <div class="keys">
+      &#x2190; &#x2192; &nbsp;hop between lanes, and turn at corners<br>
+      &#x2191; &nbsp;jump over logs and streams<br>
+      &#x2193; &nbsp;duck under branches (and owls!)<br>
+      Collect &#x1F43E; bear tracks and &#x2B50; stars!
+    </div><br>
+    <button id="go">Start running</button>`;
+  $("go").onclick = startRun;
+}
+
+function showEnd() {
+  const b = best() || { tracks: 0, stars: 0 };
+  const newBest = game.tracks + game.stars * 5 > b.tracks + b.stars * 5;
+  if (newBest) saveBest({ tracks: game.tracks, stars: game.stars });
+  $("card").style.display = "flex";
+  document.querySelector("#card .box").innerHTML = `
+    <h1>Walter made it home!</h1>
+    <p>Mom and Dad squeeze him tight.</p>
+    <p class="big">&#x1F43E; ${game.tracks} of ${game.totalTracks} &nbsp; &#x2B50; ${game.stars} of ${game.totalStars}</p>
+    <p>${game.bumps === 0 ? "Not a single stumble. Wow!" : game.bumps === 1 ? "Just 1 stumble." : game.bumps + " stumbles."}
+    ${newBest ? "<br><b>That's your best run!</b>" : `<br>Best: &#x1F43E; ${b.tracks} &nbsp; &#x2B50; ${b.stars}`}</p>
+    <button id="go">Run again</button>`;
+  $("go").onclick = startRun;
+}
+
+// Plan a fresh route and put Walter at the start of it.
+function newRoute(runSeed) {
+  stopCameo();
+  cameoNext = 0;
+  route.forEach((seg) => seg.group && dropSegment(seg));
+  route = makeRoute(runSeed);
+  planClearings();
+  game.totalTracks = 0; game.totalStars = 0;
+  for (const seg of route) for (const it of seg.items) it.kind === "track" ? game.totalTracks++ : game.totalStars++;
+  resetWalter();
+  updateBuilt(0);
+}
+
+function startRun() {
+  initAudio();
+  if (game.state !== "title") newRoute(1 + Math.floor(Math.random() * 1e6));
+  Object.assign(game, { state: "run", paused: false, chase: false, tracks: 0, stars: 0, bumps: 0, homeT: 0, combo: 0 });
+  $("card").style.display = "none";
+  say("Follow the glowing tracks home!", 2.4);
+}
+
+// ---------------------------------------------------------------------
+// THE LOOP
+// ---------------------------------------------------------------------
+const BUMP_TEXT = {
+  log: "Trip! Jump over logs with ↑",
+  stream: "Splash! Jump over streams with ↑",
+  branch: "Bonk! Duck under branches with ↓",
+  block: "Oops! Go around it",
+};
+
+function bump(text, always, kind) {
+  if (w.safeT > 0 && !always) return;
+  w.stumbleT = 0.8; w.safeT = 1.8; w.speed *= 0.4;
+  game.bumps++;
+  game.combo = 0;
+  const lost = Math.min(DROP_ON_BUMP, game.tracks);
+  game.tracks -= lost;
+  say(text + (lost ? `   (dropped ${lost} 🐾)` : ""), 2.2);
+  sfx(kind === "stream" ? "splash" : "bump");
+  if (lost) burst(w.viewPos.x, 0.8, w.viewPos.z, 0x9fe3ff, 18);
+  if (kind === "stream") burst(w.viewPos.x, 0.3, w.viewPos.z, 0x6fb8e8, 24);
+}
+
+function checkObstacles(seg) {
+  for (const ob of seg.obstacles) {
+    if (ob.done || w.s < ob.s - 0.45) continue;
+    let hit;
+    if (ob.kind === "log") hit = w.y < 0.45;
+    else if (ob.kind === "stream") hit = w.y < 0.3 && Math.abs(w.s - ob.s) < 0.85;
+    else if (ob.kind === "branch") hit = w.duckT <= 0;
+    else hit = w.y < 0.75 && ob.lanes.some((l) => Math.abs(w.lat - l * LANE_W) < 1.05);
+    if (hit) { ob.done = true; bump(BUMP_TEXT[ob.kind], false, ob.kind); }
+    else if (w.s > ob.s + (ob.kind === "stream" ? 0.85 : 0.45)) ob.done = true;   // made it past
+  }
+}
+
+function checkItems(seg) {
+  for (const it of seg.items) {
+    if (it.taken || Math.abs(it.s - w.s) > 0.9 || Math.abs(it.lat - w.lat) > 0.95) continue;
+    const reach = it.kind === "track" ? w.y < 1.3 : Math.abs(w.y + 0.9 - it.y) < 1.0;
+    if (!reach) continue;
+    it.taken = true;
+    const p = worldXZ(seg, it.s, it.lat);
+    if (it.mesh) it.mesh.visible = false;
+    if (it.kind === "track") {
+      game.tracks++;
+      sfx("track", game.combo);
+      game.combo++; game.comboT = 0.9;
+      burst(p.x, 0.2, p.z, 0x9fe3ff, 6);
+    } else {
+      game.stars++;
+      sfx("star");
+      burst(p.x, it.y, p.z, 0xffd84a, 18);
+    }
+  }
+}
+
+function update(dt) {
+  if (game.state === "run") updateRun(dt);
+  else if (game.state === "home") updateHome(dt);
+  animateWalter(dt);
+  updateSparks(dt);
+}
+
+function updateRun(dt) {
+  const seg = route[w.seg];
+  const progress = (seg.start + w.s) / TOTAL;
+  let target = SPEED_START + (SPEED_END - SPEED_START) * progress;
+  if (game.chase) target *= CHASE_BOOST;
+  if (w.stumbleT > 0) target *= 0.45;
+  w.speed += (target - w.speed) * Math.min(1, dt * 1.5);
+  w.s += w.speed * dt;
+
+  // Slide toward the chosen lane.
+  const goal = w.lane * LANE_W;
+  w.lat += Math.sign(goal - w.lat) * Math.min(Math.abs(goal - w.lat), 12 * dt);
+
+  // Jumping: up, then gravity pulls him back down.
+  if (w.y > 0 || w.vy > 0) {
+    w.vy -= GRAVITY * dt;
+    w.y = Math.max(0, w.y + w.vy * dt);
+    if (w.y === 0) { w.vy = 0; sfx("land"); }
+  }
+  w.duckT -= dt; w.stumbleT -= dt; w.safeT -= dt;
+  game.comboT -= dt;
+  if (game.comboT <= 0) game.combo = 0;
+
+  // Now and then, a bird sings somewhere in the woods.
+  game.birdT -= dt;
+  if (game.birdT <= 0) { sfx("bird"); game.birdT = 3 + Math.random() * 6; }
+
+  checkObstacles(seg);
+  checkItems(seg);
+  updateCameos(dt, progress);
+
+  // The corner.
+  const nearCorner = seg.turn && seg.len - w.s < TURN_ZONE && !w.turnQueued;
+  $("turn").style.display = nearCorner ? "block" : "none";
+  if (nearCorner) $("turn").textContent = seg.turn < 0 ? "← Turn left!" : "Turn right! →";
+
+  if (w.s >= seg.len) {
+    if (seg.last) { arriveHome(); return; }
+    if (!w.turnQueued) bump("Oof, into the bushes! Turn where the tracks turn.", true);
+    w.s -= seg.len;
+    w.seg++;
+    w.turnQueued = false;
+    updateBuilt(w.seg);
+  }
+}
+
+function arriveHome() {
+  game.state = "home";
+  game.homeT = 0;
+  game.chase = false;
+  stopCameo();
+  $("turn").style.display = "none";
+  say("Home!", 2);
+  sfx("home");
+}
+
+function updateHome(dt) {
+  // Walter slows to a stop in front of Mom and Dad.
+  const seg = route[w.seg];
+  w.speed = Math.max(0, w.speed - 11 * dt);
+  w.s = Math.min(seg.len + 9, w.s + w.speed * dt);
+  w.lat *= 1 - Math.min(1, dt * 3);
+  w.y = Math.max(0, w.y - 6 * dt);
+  game.homeT += dt;
+  for (const p of [mom, dad]) {
+    if (!p) continue;
+    // Both wave with their right arm: raised high, swaying at the elbow.
+    p.arms[1].shoulder.rotation.x = 2.7;
+    p.arms[1].shoulder.rotation.z = -0.3;
+    p.arms[1].elbow.rotation.z = Math.sin(game.homeT * 8) * 0.5;
+  }
+  if (game.homeT > 2.2 && game.state === "home") { game.state = "end"; showEnd(); }
+}
+
+// Smallest turn from angle a to angle b, so a corner never spins him the long way round.
+function angleDiff(a, b) {
+  let d = b - a;
+  while (d > Math.PI) d -= Math.PI * 2;
+  while (d < -Math.PI) d += Math.PI * 2;
+  return d;
+}
+
+// Pose Walter's joints for this moment: running, jumping, ducking or standing.
+function poseWalter(running) {
+  const P = walter, L = P.legs, A = P.arms;
+  const ducking = w.duckT > 0 && game.state === "run";
+  const sn = Math.sin(w.phase), cs = Math.cos(w.phase);
+  let rigY = 0, lean = -0.08, twist = 0, headX = 0;
+  if (w.y > 0) {
+    // In the air: one knee up, the other leg trailing, arms thrown up.
+    L[0].hip.rotation.x = 1.1; L[0].knee.rotation.x = -1.4;
+    L[1].hip.rotation.x = -0.35; L[1].knee.rotation.x = -0.7;
+    A[0].shoulder.rotation.x = 2.3; A[1].shoulder.rotation.x = 2.5;
+    A[0].elbow.rotation.x = A[1].elbow.rotation.x = 0.4;
+    lean = -0.1;
+  } else if (ducking) {
+    // A deep crouch: hips drop, knees fold, body leans forward, head up.
+    rigY = -0.36;
+    for (const l of L) { l.hip.rotation.x = 1.5; l.knee.rotation.x = -2.35; l.ankle.rotation.x = 0.85; }
+    for (const a of A) { a.shoulder.rotation.x = 0.7; a.elbow.rotation.x = 1.5; }
+    lean = -0.7; headX = 0.5;
+  } else if (running) {
+    // Running: legs swing opposite, a knee folds as its leg swings forward,
+    // arms pump against the legs with bent elbows, shoulders twist a little.
+    L[0].hip.rotation.x = sn * 0.85; L[1].hip.rotation.x = -sn * 0.85;
+    L[0].knee.rotation.x = -(0.2 + 1.25 * Math.max(0, cs));
+    L[1].knee.rotation.x = -(0.2 + 1.25 * Math.max(0, -cs));
+    L[0].ankle.rotation.x = L[1].ankle.rotation.x = 0;
+    A[0].shoulder.rotation.x = -sn * 0.8; A[1].shoulder.rotation.x = sn * 0.8;
+    A[0].elbow.rotation.x = A[1].elbow.rotation.x = 1.35;
+    rigY = Math.abs(cs) * 0.04;
+    lean = -0.2; twist = sn * 0.18;
+  } else {
+    for (const l of L) { l.hip.rotation.x = 0; l.knee.rotation.x = 0; l.ankle.rotation.x = 0; }
+    for (const a of A) { a.shoulder.rotation.x = 0.05; a.elbow.rotation.x = 0.25; }
+  }
+  if (w.stumbleT > 0) {
+    // Stumbling: pitched forward, arms flung out.
+    lean = -0.75 * (w.stumbleT / 0.8);
+    A[0].shoulder.rotation.x = A[1].shoulder.rotation.x = 1.9;
+  }
+  for (const [k, a] of A.entries()) a.shoulder.rotation.z = (k ? 1 : -1) * (w.stumbleT > 0 ? 0.7 : 0.12);
+  P.rig.position.y = rigY;
+  P.torso.rotation.x = lean;
+  P.torso.rotation.y = twist;
+  P.head.rotation.x = headX - lean * 0.6;   // keep his eyes on the trail
+  P.head.rotation.y = -twist * 0.7;
+}
+
+function animateWalter(dt) {
+  const seg = route[w.seg];
+  const p = worldXZ(seg, w.s, w.lat);
+  const k = 1 - Math.exp(-14 * dt);
+  w.viewPos.x += (p.x - w.viewPos.x) * k;
+  w.viewPos.z += (p.z - w.viewPos.z) * k;
+  w.viewPos.y = w.y;
+  w.viewAng += angleDiff(w.viewAng, seg.ang) * (1 - Math.exp(-7 * dt));
+
+  walter.group.position.copy(w.viewPos);
+  walter.group.rotation.y = w.viewAng;
+  // Blink while he can't stumble again, so kids see he's safe for a moment.
+  walter.group.visible = !(w.safeT > 0 && Math.floor(w.safeT * 10) % 2 === 0);
+
+  const running = game.state === "run" || (game.state === "home" && w.speed > 0.5);
+  w.phase += (running ? w.speed : 0) * dt * 0.95;
+  poseWalter(running);
+  // A soft footstep each time a foot lands.
+  const step = Math.sign(Math.sin(w.phase));
+  if (running && w.y === 0 && w.duckT <= 0 && step !== w.lastStep) { w.lastStep = step; sfx("step"); }
+
+  blob.position.set(w.viewPos.x, 0.04, w.viewPos.z);
+  const bs = 1.1 - Math.min(0.5, w.y * 0.25);
+  blob.scale.set(bs, 1, bs);
+
+  // Camera: behind and above Walter, looking a little ahead of him.
+  // It sinks a bit when he's fast, which makes the speed feel bigger.
+  const fx = -Math.sin(w.viewAng), fz = -Math.cos(w.viewAng);
+  const back = 6.6 - (w.speed - SPEED_START) * 0.08;
+  camera.position.set(w.viewPos.x - fx * back, 3.4 + w.y * 0.35, w.viewPos.z - fz * back);
+  camera.lookAt(w.viewPos.x + fx * 6, 1.2, w.viewPos.z + fz * 6);
+  sky.position.copy(camera.position);
+  sun.target.position.copy(w.viewPos);
+  sun.position.copy(w.viewPos).add(SUN_OFFSET);
+  fill.target.position.copy(w.viewPos);
+  fill.position.copy(camera.position).add(new THREE.Vector3(0, 4, 0));
+
+  // Stars spin and bob; streams shimmer.
+  const t = performance.now() / 1000;
+  for (let i = Math.max(0, w.seg - 1); i <= Math.min(route.length - 1, w.seg + 2); i++) {
+    for (const it of route[i].items) {
+      if (it.kind === "star" && it.mesh) {
+        it.mesh.rotation.y = t * 2.5;
+        it.mesh.position.y = it.y + Math.sin(t * 3 + it.s) * 0.08;
+      }
+    }
+    for (const ob of route[i].obstacles) if (ob.water) ob.water.material.emissive.setHSL(0.56, 0.6, 0.14 + Math.sin(t * 4) * 0.04);
+  }
+  updateFlies(t);
+}
+
+function drawHud() {
+  $("nTracks").textContent = game.tracks;
+  $("nStars").textContent = game.stars;
+  const seg = route[w.seg];
+  const pct = Math.min(1, (seg.start + w.s) / TOTAL) * 100;
+  $("fill").style.width = pct + "%";
+  $("me").style.left = pct + "%";
+}
+
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000);   // a long pause counts as one short step
+  last = now;
+  if (!game.paused) update(dt);
+  drawHud();
+  renderer.render(scene, camera);
+  requestAnimationFrame(frame);
+}
+
+addEventListener("resize", () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+newRoute(1 + Math.floor(Math.random() * 1e6));
+showTitle();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
